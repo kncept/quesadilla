@@ -20,3 +20,6 @@ func QDir() string {
 func QBinariesDirectory(providerId string) string {
 	return path.Join(QDir(), "runners", providerId, "binaries")
 }
+func QModelsDirectory(modelType string) string {
+	return path.Join(QDir(), "models", modelType)
+}

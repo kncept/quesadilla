@@ -7,14 +7,15 @@ import (
 	"path"
 	"regexp"
 
-	"github.com/kncept/quesadilla/github"
-	"github.com/kncept/quesadilla/qenv"
-	"github.com/kncept/quesadilla/runner/definitions"
+	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
+	"github.com/kncept/quesadilla/utils/github"
+	"github.com/kncept/quesadilla/utils/qenv"
 )
 
-var _ definitions.Runner = (*githubBinaryRunner)(nil)
+var _ runnerDefinitions.Runner = (*githubBinaryRunner)(nil)
 
-func NewGithubBinaryRunnerFromUrl(providerId string, rawURL string, assetBinaryHandler AssetBinaryHandler) definitions.Runner {
+func NewGithubBinaryRunnerFromUrl(providerId string, rawURL string, assetBinaryHandler AssetBinaryHandler) runnerDefinitions.Runner {
 	owner, repository, err := extractOwnerAndRepositoryFromUrl(rawURL)
 	if err != nil {
 		panic(err)
@@ -32,7 +33,7 @@ func extractOwnerAndRepositoryFromUrl(rawURL string) (string, string, error) {
 
 	return matches[1], matches[2], nil
 }
-func NewGithubBinaryRunnerFromRepoOwnerAndName(providerId string, repoOwner string, repoName string, assetBinaryHandler AssetBinaryHandler) definitions.Runner {
+func NewGithubBinaryRunnerFromRepoOwnerAndName(providerId string, repoOwner string, repoName string, assetBinaryHandler AssetBinaryHandler) runnerDefinitions.Runner {
 	return &githubBinaryRunner{
 		providerId:         providerId,
 		repoOwner:          repoOwner,
@@ -49,6 +50,12 @@ type githubBinaryRunner struct {
 	repoOwner          string
 	repoName           string
 	assetBinaryHandler AssetBinaryHandler
+}
+
+// Run implements [definitions.Runner].
+func (this *githubBinaryRunner) Run(*modelDefinitions.Model) error {
+
+	panic("unimplemented")
 }
 
 // RemoveVersion implements [definitions.Runner].

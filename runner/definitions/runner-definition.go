@@ -1,5 +1,7 @@
 package definitions
 
+import modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+
 type Runner interface {
 	InstalledVersions() []string
 	InstallableVersions() []string
@@ -12,6 +14,8 @@ type Runner interface {
 	Id() string
 	Name() string
 	Description() string
+
+	Run(*modelDefinitions.Model) error
 }
 
 func GetRunner(runners []Runner, id string) Runner {

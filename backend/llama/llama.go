@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/kncept/quesadilla/backend/definitions"
-	"github.com/kncept/quesadilla/qenv"
 	githubbinary "github.com/kncept/quesadilla/runner/github-binary"
 	"github.com/kncept/quesadilla/utils/compress"
+	"github.com/kncept/quesadilla/utils/qenv"
 	"github.com/kncept/quesadilla/utils/qhttp"
 )
 
@@ -21,6 +21,7 @@ func LlamaBackend() definitions.Backend {
 	return definitions.NewStandardBackend(
 		providerId, "Llama.cpp",
 		"See https://llama.app/ for details",
+		"gguf",
 	).RegisterRunner(
 		githubbinary.NewGithubBinaryRunnerFromUrl(providerId, "https://github.com/ggml-org/llama.cpp", func(version string, nameToDownloadUrl map[string]string) error {
 			assetsToDownload := make([]string, 0)

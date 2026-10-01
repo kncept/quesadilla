@@ -11,18 +11,21 @@ type Backend interface {
 	Name() string
 	Description() string
 	Runners() []runnerDefinitions.Runner
+	ModelTypes() []string
 }
 
 func NewStandardBackend(
 	id string,
 	name string,
 	description string,
+	modelTypes ...string,
 ) *StandardBackend {
 	return &StandardBackend{
 		id:          id,
 		name:        name,
 		description: description,
 		runners:     make(map[string]runnerDefinitions.Runner),
+		modelTypes:  modelTypes,
 	}
 }
 
@@ -31,6 +34,12 @@ type StandardBackend struct {
 	name        string
 	description string
 	runners     map[string]runnerDefinitions.Runner
+	modelTypes  []string
+}
+
+// ModelTypes implements [Backend].
+func (this *StandardBackend) ModelTypes() []string {
+	return this.modelTypes
 }
 
 // Description implements [Backend].
