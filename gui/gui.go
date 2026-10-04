@@ -96,7 +96,7 @@ func acquireInstanceLock(lockDir string) (func(), bool) {
 	if err != nil {
 		panic(fmt.Sprintf("gui: creating single instance lock: %v", err))
 	}
-	if err := s.Lock(); errors.Is(err, single.ErrAlreadyRunning) {
+	if err = s.Lock(); errors.Is(err, single.ErrAlreadyRunning) {
 		fmt.Fprintln(os.Stderr, "Quesadilla is already running")
 		return nil, false
 	}

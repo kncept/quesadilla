@@ -80,10 +80,14 @@ func TestSingleInstanceLockCrossProcess(t *testing.T) {
 
 	// wait for the child to report holding the lock
 	lineCh := make(chan string, 1)
+	errCh := make(chan error, 1)
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			lineCh <- scanner.Text()
+		}
+		if err := scanner.Err(); err != nil {
+			errCh <- err
 		}
 		close(lineCh)
 	}()
@@ -97,6 +101,8 @@ func TestSingleInstanceLockCrossProcess(t *testing.T) {
 				t.Fatal("lock holder exited before locking")
 			}
 			ready = strings.Contains(line, "locked")
+		case err := <-errCh:
+			t.Fatalf("scanner error: %v", err)
 		case <-timeout:
 			t.Fatal("timed out waiting for lock holder")
 		}
