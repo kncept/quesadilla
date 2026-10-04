@@ -1,14 +1,17 @@
 package llama
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"runtime"
 	"strings"
 
 	"github.com/kncept/quesadilla/backend/definitions"
+	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	githubbinary "github.com/kncept/quesadilla/runner/github-binary"
 	"github.com/kncept/quesadilla/utils/compress"
 	"github.com/kncept/quesadilla/utils/qenv"
@@ -18,11 +21,12 @@ import (
 const providerId string = "llama"
 
 func LlamaBackend() definitions.Backend {
-	return definitions.NewStandardBackend(
+	llamaBackend := definitions.NewStandardBackend(
 		providerId, "Llama.cpp",
 		"See https://llama.app/ for details",
 		"gguf",
-	).RegisterRunner(
+	)
+	llamaBackend.RegisterRunner(
 		githubbinary.NewGithubBinaryRunnerFromUrl(providerId, "https://github.com/ggml-org/llama.cpp", func(version string, nameToDownloadUrl map[string]string) error {
 			assetsToDownload := make([]string, 0)
 
@@ -106,6 +110,41 @@ func LlamaBackend() definitions.Backend {
 		}),
 	)
 
+	llamaBackend.Runner = func(m *modelDefinitions.Model) error {
+		fmt.Printf("RUNNING: %+v\n", m)
+		binaryRunner := llamaBackend.Runners()[0]
+		versionToRun := binaryRunner.InstalledVersions()[0]
+
+		versionedBinDir := path.Join(qenv.QBinariesDirectory(providerId), versionToRun)
+
+		cmd := &exec.Cmd{
+			Path: "llama-server",
+			Args: []string{
+				"--model", m.ModelFile,
+				"--host", "localhost",
+				"--port", "8080",
+			},
+			Dir: path.Join(versionedBinDir, fmt.Sprintf("llama-%s", versionToRun)),
+		}
+
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		fmt.Printf("CMD: %+v\n", cmd)
+
+		err := cmd.Start()
+		if err != nil {
+			fmt.Printf("Error Starting: %v\n", err)
+			fmt.Println(stdout.String(), stderr.String())
+			return err
+		}
+		err = cmd.Wait()
+		fmt.Println(stdout.String(), stderr.String())
+		return err
+
+	}
+	return llamaBackend
 }
 
 func shouldSymlinkFile(filename string) bool {

@@ -7,7 +7,6 @@ import (
 	"path"
 	"regexp"
 
-	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 	"github.com/kncept/quesadilla/utils/github"
 	"github.com/kncept/quesadilla/utils/qenv"
@@ -50,12 +49,6 @@ type githubBinaryRunner struct {
 	repoOwner          string
 	repoName           string
 	assetBinaryHandler AssetBinaryHandler
-}
-
-// Run implements [definitions.Runner].
-func (this *githubBinaryRunner) Run(*modelDefinitions.Model) error {
-
-	panic("unimplemented")
 }
 
 // RemoveVersion implements [definitions.Runner].

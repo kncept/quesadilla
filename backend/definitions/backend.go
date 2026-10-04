@@ -1,6 +1,9 @@
 package definitions
 
 import (
+	"fmt"
+
+	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
@@ -12,7 +15,10 @@ type Backend interface {
 	Description() string
 	Runners() []runnerDefinitions.Runner
 	ModelTypes() []string
+	Run(*modelDefinitions.Model) error
 }
+
+type BackendRunner func(*modelDefinitions.Model) error
 
 func NewStandardBackend(
 	id string,
@@ -33,8 +39,17 @@ type StandardBackend struct {
 	id          string
 	name        string
 	description string
+	Runner      BackendRunner
 	runners     map[string]runnerDefinitions.Runner
 	modelTypes  []string
+}
+
+// Run implements [Backend].
+func (this *StandardBackend) Run(model *modelDefinitions.Model) error {
+	if len(this.Runners()) == 0 {
+		return fmt.Errorf("No Runners Available for backend %s", this.id)
+	}
+	return this.Runner(model)
 }
 
 // ModelTypes implements [Backend].

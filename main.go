@@ -241,12 +241,7 @@ func main() {
 		if b == nil {
 			log.Fatalf("No backends available for model of type %s", m.ModelType)
 		}
-
-		if len(b.Runners()) == 0 {
-			log.Fatalf("No Runners Available for backend %s", b.Id())
-		}
-
-		err := b.Runners()[0].Run(m)
+		err := b.Run(m)
 		if err != nil {
 			log.Fatal(err)
 		}
