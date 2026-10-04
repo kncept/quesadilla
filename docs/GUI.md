@@ -2,11 +2,11 @@
 
 There are two GUI components that wrap the main application.
 
-The first is a lightweight 'task bar icon' style that allows launching the main GUI, and potentially offers a few basic but useful controls.
+The first is a lightweight 'system tray' or 'menu bar' style that allows launching the main GUI, and potentially offers a few basic but useful controls.
 
 The second is a full control suite app.
 
-# Task Bar
+# Lightweight Indicator
 
 - Allows launching the main control suite app
 - has a 'no models running', or a 'models running' and a list of running models.

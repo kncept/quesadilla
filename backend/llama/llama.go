@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/kncept/quesadilla/backend/definitions"
+	"github.com/kncept/quesadilla/backend/running"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	githubbinary "github.com/kncept/quesadilla/runner/github-binary"
 	"github.com/kncept/quesadilla/utils/compress"
@@ -147,6 +148,9 @@ func LlamaBackend() definitions.Backend {
 			fmt.Println(stdout.String(), stderr.String())
 			return err
 		}
+		// report the model as running for as long as the server lives
+		stopTracking := running.Default().Track(*m)
+		defer stopTracking()
 		err = cmd.Wait()
 		fmt.Println(stdout.String(), stderr.String())
 		return err
