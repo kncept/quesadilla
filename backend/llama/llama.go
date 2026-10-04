@@ -115,14 +115,22 @@ func LlamaBackend() definitions.Backend {
 		binaryRunner := llamaBackend.Runners()[0]
 		versionToRun := binaryRunner.InstalledVersions()[0]
 
+		qWorkir, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+
 		versionedBinDir := path.Join(qenv.QBinariesDirectory(providerId), versionToRun)
 
 		cmd := &exec.Cmd{
 			Path: "llama-server",
 			Args: []string{
+				"", // why do we need this to have and blank (or llama-server)??
 				"--model", m.ModelFile,
 				"--host", "localhost",
-				"--port", "8080",
+				"--port", "8080", // 9931 --> planned defult port in the future
+				"--n-gpu-layers", "999",
+				"--log-file", path.Join(qWorkir, "llama.log"),
 			},
 			Dir: path.Join(versionedBinDir, fmt.Sprintf("llama-%s", versionToRun)),
 		}
@@ -133,7 +141,7 @@ func LlamaBackend() definitions.Backend {
 
 		fmt.Printf("CMD: %+v\n", cmd)
 
-		err := cmd.Start()
+		err = cmd.Start()
 		if err != nil {
 			fmt.Printf("Error Starting: %v\n", err)
 			fmt.Println(stdout.String(), stderr.String())

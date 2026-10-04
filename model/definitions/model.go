@@ -2,7 +2,6 @@ package definitions
 
 import (
 	"os"
-	"path"
 )
 
 type ModelType string
@@ -12,7 +11,7 @@ type ModelType string
 type Model struct {
 	ModelName string
 	ModelType string // implies the backend type required
-	ModelFile string
+	ModelFile string //fully qualified model file
 }
 
 type RemoteModel struct {
@@ -30,7 +29,7 @@ type ModelScanner interface {
 	GetModel(modelName string) *RemoteModel
 }
 
-func DirSingleFilePathOrNothing(dir string) string {
+func SingleFileContents(dir string) string {
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
 		return ""
@@ -38,5 +37,5 @@ func DirSingleFilePathOrNothing(dir string) string {
 	if len(dirEntries) != 1 {
 		return ""
 	}
-	return path.Join(dir, dirEntries[0].Name())
+	return dirEntries[0].Name()
 }

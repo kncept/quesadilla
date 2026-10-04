@@ -21,12 +21,12 @@ func (this *LocalAiScanner) GetModel(modelName string) *definitions.RemoteModel 
 	}
 	llamaCppModelsDirectory := path.Join(homeDir, ".localai", "models", "llama-cpp", "models")
 	modelDir := path.Join(llamaCppModelsDirectory, modelName)
-	modelFile := definitions.DirSingleFilePathOrNothing(modelDir)
+	modelFile := definitions.SingleFileContents(modelDir)
 	if modelFile != "" && strings.HasSuffix(modelFile, ".gguf") {
 		return &definitions.RemoteModel{
 			ModelName:    modelName,
 			ModelType:    "gguf",
-			ModelFile:    modelFile,
+			ModelFile:    path.Join(modelDir, modelFile),
 			ScannerName:  this.ScannerName(),
 			MetadataFile: "", // not from a metadata file, so leave it empty
 		}
@@ -51,12 +51,12 @@ func (this *LocalAiScanner) ScanForModels() ([]definitions.RemoteModel, error) {
 	}
 	for _, dir := range dirEntries {
 		modelDir := path.Join(llamaCppModelsDirectory, dir.Name())
-		modelFile := definitions.DirSingleFilePathOrNothing(modelDir)
+		modelFile := definitions.SingleFileContents(modelDir)
 		if modelFile != "" && strings.HasSuffix(modelFile, ".gguf") {
 			models = append(models, definitions.RemoteModel{
 				ModelName:    dir.Name(),
 				ModelType:    "gguf",
-				ModelFile:    modelFile,
+				ModelFile:    path.Join(modelDir, modelFile),
 				ScannerName:  this.ScannerName(),
 				MetadataFile: "",
 			})

@@ -35,12 +35,23 @@ func listModelsOfType(modelType string) ([]definitions.Model, error) {
 	}
 	for _, dirEntry := range dirEntries {
 		modelDir := path.Join(modelsDir, dirEntry.Name())
-		filename := definitions.DirSingleFilePathOrNothing(modelDir)
-		if filename != "" {
+		filename := definitions.SingleFileContents(modelDir)
+		if filename == "model.json" {
+			remoteModel := definitions.RemoteModel{}
+			data, err := os.ReadFile(path.Join(modelDir, filename))
+			if err != nil {
+				return nil, err
+			}
+			err = json.Unmarshal(data, &remoteModel)
+			if err != nil {
+				return nil, err
+			}
+			models = append(models, remoteModel.Model)
+		} else if filename != "" {
 			models = append(models, definitions.Model{
 				ModelName: dirEntry.Name(),
 				ModelType: modelType,
-				ModelFile: filename,
+				ModelFile: path.Join(modelDir, filename),
 			})
 		}
 	}
