@@ -12,6 +12,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"github.com/kncept/quesadilla/backend/running"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
@@ -119,6 +120,66 @@ func newTrayGui(t *testing.T) *QGUI {
 	g := CreateGui(nil)
 	g.tray = fyne.NewMenu("Quesadilla")
 	return g
+}
+
+// TestMainContentSidebarAndPages verifies that the main content view builds
+// a sidebar with one item per screen and switches the content page when a
+// sidebar item is selected.
+func TestMainContentSidebarAndPages(t *testing.T) {
+	test.NewApp()
+	g := CreateGui(nil)
+	split := g.mainContent()
+
+	// The border layout keeps the content stack first and the sidebar last.
+	pages := split.Objects[0].(*fyne.Container)
+	sidebar := split.Objects[1].(*fyne.Container).Objects[0].(*widget.List)
+
+	if got := sidebar.Length(); got != 3 {
+		t.Fatalf("expected 3 sidebar items, got %d", got)
+	}
+	if got := len(pages.Objects); got != 3 {
+		t.Fatalf("expected 3 content pages, got %d", got)
+	}
+
+	// The first page is visible initially.
+	assertPageVisibility(t, pages, 0)
+
+	// Selecting a sidebar item shows only the matching page.
+	sidebar.Select(1)
+	assertPageVisibility(t, pages, 1)
+
+	sidebar.Select(2)
+	assertPageVisibility(t, pages, 2)
+}
+
+func assertPageVisibility(t *testing.T, pages *fyne.Container, want int) {
+	t.Helper()
+	for i, obj := range pages.Objects {
+		if got, wantVisible := obj.Visible(), i == want; got != wantVisible {
+			t.Fatalf("page %d visible = %v, want %v", i, got, wantVisible)
+		}
+	}
+}
+
+// TestMainContentSidebarWidth verifies that the sidebar is wide enough to
+// show its items on a single line. With wrapping labels the list's minimum
+// width collapses to a single character and the sidebar becomes a thin
+// strip of wrapped text.
+func TestMainContentSidebarWidth(t *testing.T) {
+	test.NewApp()
+	g := CreateGui(nil)
+	split := g.mainContent()
+
+	win := test.NewWindow(split)
+	win.Resize(fyne.NewSize(800, 600))
+
+	sidebar := split.Objects[1].(*fyne.Container).Objects[0].(*widget.List)
+	// "Overview" is the widest item; at the default font it needs well over
+	// 50pt, so anything below that means the labels are wrapping.
+	const minWidth = 60.0
+	if sidebar.Size().Width < minWidth {
+		t.Fatalf("sidebar too narrow: %v < %v", sidebar.Size().Width, minWidth)
+	}
 }
 
 func TestTrayMenuNoModelsRunning(t *testing.T) {

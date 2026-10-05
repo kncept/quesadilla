@@ -9,6 +9,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -161,7 +162,127 @@ func (this *QGUI) showMainWindow() {
 	defer this.mu.Unlock()
 	if this.mainWin == nil {
 		this.mainWin = this.app.NewWindow("Quesadilla Control Suite")
-		this.mainWin.SetContent(widget.NewLabel("Quesadilla Control Suite"))
+		this.mainWin.SetContent(this.mainContent())
+		this.mainWin.Resize(fyne.NewSize(800, 600))
+		this.mainWin.Show()
+	} else {
+		this.mainWin.Show()
 	}
-	this.mainWin.Show()
+}
+
+// mainContent creates the split view with a sidebar menu on the left
+// and a content view taking up the rest of the window.
+func (this *QGUI) mainContent() *fyne.Container {
+	// Sidebar menu items - one per screen, per docs/GUI.md
+	sidebarItems := []string{"Overview", "Models", "Backends"}
+
+	// One content page per sidebar item; only the selected page is shown.
+	pages := container.NewStack(overviewPage(), modelsPage(), backendsPage())
+
+	// The list sizes itself to its template item, so use the longest item
+	// as the template to guarantee the sidebar is wide enough for all items.
+	longest := sidebarItems[0]
+	for _, item := range sidebarItems {
+		if len(item) > len(longest) {
+			longest = item
+		}
+	}
+
+	// Sidebar menu. Labels must not wrap: a wrapping label reports a tiny
+	// minimum width, which collapsed the sidebar into a narrow strip of
+	// wrapped text.
+	sidebar := widget.NewList(
+		func() int {
+			return len(sidebarItems)
+		},
+		func() fyne.CanvasObject {
+			label := widget.NewLabel(longest)
+			label.Wrapping = fyne.TextWrapOff
+			return label
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			obj.(*widget.Label).SetText(sidebarItems[id])
+		},
+	)
+
+	// Show the matching page when a sidebar item is selected.
+	sidebar.OnSelected = func(id widget.ListItemID) {
+		for i, page := range pages.Objects {
+			if i == int(id) {
+				page.Show()
+			} else {
+				page.Hide()
+			}
+		}
+	}
+
+	// Layout using Border layout: sidebar on leading (left), content in
+	// center. The padded container gives the sidebar a little breathing room.
+	split := container.NewBorder(
+		nil,                          // top
+		nil,                          // bottom
+		container.NewPadded(sidebar), // leading (left/sidebar)
+		nil,                          // trailing (right)
+		pages,                        // center
+	)
+
+	// Select the first item initially (also shows the first page)
+	sidebar.Select(0)
+
+	return split
+}
+
+// page builds one content page: a bold title, an optional intro, and a set
+// of sections. The page is padded so it fills the content area. Sections
+// are passed as alternating heading/body pairs.
+func page(title, intro string, sections ...string) *fyne.Container {
+	heading := func(text string) *widget.Label {
+		return widget.NewLabelWithStyle(text, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	}
+	body := func(text string) *widget.Label {
+		label := widget.NewLabel(text)
+		label.Wrapping = fyne.TextWrapWord
+		return label
+	}
+
+	objects := []fyne.CanvasObject{heading(title), widget.NewSeparator()}
+	if intro != "" {
+		objects = append(objects, body(intro), widget.NewSeparator())
+	}
+	for i := 0; i+1 < len(sections); i += 2 {
+		objects = append(objects, heading(sections[i]), body(sections[i+1]))
+		if i+2 < len(sections) {
+			objects = append(objects, widget.NewSeparator())
+		}
+	}
+	return container.NewPadded(container.NewVBox(objects...))
+}
+
+// overviewPage is the Overview screen: stats and the running models section.
+func overviewPage() *fyne.Container {
+	return page("Overview",
+		"Overview stats would go here.",
+		"Running Models",
+		"All running models with stats, including uptime, would be listed here. Each model has a 'stop model' button.",
+	)
+}
+
+// modelsPage is the Models screen: installed models, plus the scan and
+// available sections.
+func modelsPage() *fyne.Container {
+	return page("Models",
+		"Installed models, including config and running stats, would go here.",
+		"Scan Models",
+		"Models found by a scan can be linked or unlinked here. Shown as a table with a row per found model, listing details and operations.",
+		"Available Models",
+		"Model metadata, whether it is running or not, and start/stop controls. Shown as a table with a row per model, listing details and operations.",
+	)
+}
+
+// backendsPage is the Backends screen: installed backends and, per backend,
+// its list of running models.
+func backendsPage() *fyne.Container {
+	return page("Backends",
+		"Installed backends, where each backend also shows a list of its running models, would go here.",
+	)
 }
