@@ -214,10 +214,8 @@ func main() {
 			log.Fatalf("No installed version of %s - install one first", b.Name())
 		}
 		fmt.Printf("Running %s with %s (version %s)\n", m.ModelName, b.Name(), versions[0])
-		err := b.Run(m)
-		if err != nil {
-			log.Fatal(err)
-		}
+		qApp.Start(b, m)
+		qApp.AwaitAll()
 
 	default:
 		fmt.Printf("Fall through\n%+v\n%v\n", CLI, ctx.Command())
