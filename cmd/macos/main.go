@@ -1,10 +1,13 @@
 package main
 
-import "github.com/kncept/quesadilla/gui"
+import (
+	"github.com/kncept/quesadilla/app"
+	"github.com/kncept/quesadilla/gui"
+)
 
 func main() {
 
-	g := gui.CreateGui(SystemAgnosticOperations())
+	g := gui.CreateGui(SystemAgnosticOperations(), app.New())
 	g.Start()
 }
 

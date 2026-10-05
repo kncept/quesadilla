@@ -15,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/postfinance/single"
 
+	qapp "github.com/kncept/quesadilla/app"
 	"github.com/kncept/quesadilla/backend/running"
 	"github.com/kncept/quesadilla/utils/qenv"
 )
@@ -23,6 +24,7 @@ import (
 // DO NOT instantiate - use the 'Create' func
 type QGUI struct {
 	SysLink SystemAgnosticOperations
+	QApp    *qapp.QApp
 
 	mu      sync.Mutex
 	started bool
@@ -107,8 +109,8 @@ func acquireInstanceLock(lockDir string) (func(), bool) {
 	return func() { _ = s.Unlock() }, true
 }
 
-func CreateGui(SysLink SystemAgnosticOperations) *QGUI {
-	return &QGUI{SysLink: SysLink}
+func CreateGui(SysLink SystemAgnosticOperations, qApp *qapp.QApp) *QGUI {
+	return &QGUI{SysLink: SysLink, QApp: qApp}
 }
 
 // RunningModelNames returns the names of the models currently running.
@@ -185,7 +187,7 @@ func (this *QGUI) mainContent() *fyne.Container {
 	sidebarItems := []string{"Overview", "Models", "Backends"}
 
 	// One content page per sidebar item; only the selected page is shown.
-	pages := container.NewStack(overviewPage(), modelsPage(), backendsPage())
+	pages := container.NewStack(overviewPage(), this.modelsPage(), this.backendsPage())
 
 	// The list sizes itself to its template item, so use the longest item
 	// as the template to guarantee the sidebar is wide enough for all items.
@@ -240,25 +242,30 @@ func (this *QGUI) mainContent() *fyne.Container {
 	return split
 }
 
+// headingLabel is a bold, non-wrapping label used for titles and headings.
+func headingLabel(text string) *widget.Label {
+	label := widget.NewLabelWithStyle(text, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	label.Wrapping = fyne.TextWrapOff
+	return label
+}
+
+// wrappedLabel is a word-wrapping body label.
+func wrappedLabel(text string) *widget.Label {
+	label := widget.NewLabel(text)
+	label.Wrapping = fyne.TextWrapWord
+	return label
+}
+
 // page builds one content page: a bold title, an optional intro, and a set
 // of sections. The page is padded so it fills the content area. Sections
 // are passed as alternating heading/body pairs.
 func page(title, intro string, sections ...string) *fyne.Container {
-	heading := func(text string) *widget.Label {
-		return widget.NewLabelWithStyle(text, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	}
-	body := func(text string) *widget.Label {
-		label := widget.NewLabel(text)
-		label.Wrapping = fyne.TextWrapWord
-		return label
-	}
-
-	objects := []fyne.CanvasObject{heading(title), widget.NewSeparator()}
+	objects := []fyne.CanvasObject{headingLabel(title), widget.NewSeparator()}
 	if intro != "" {
-		objects = append(objects, body(intro), widget.NewSeparator())
+		objects = append(objects, wrappedLabel(intro), widget.NewSeparator())
 	}
 	for i := 0; i+1 < len(sections); i += 2 {
-		objects = append(objects, heading(sections[i]), body(sections[i+1]))
+		objects = append(objects, headingLabel(sections[i]), wrappedLabel(sections[i+1]))
 		if i+2 < len(sections) {
 			objects = append(objects, widget.NewSeparator())
 		}
@@ -272,25 +279,5 @@ func overviewPage() *fyne.Container {
 		"Overview stats would go here.",
 		"Running Models",
 		"All running models with stats, including uptime, would be listed here. Each model has a 'stop model' button.",
-	)
-}
-
-// modelsPage is the Models screen: installed models, plus the scan and
-// available sections.
-func modelsPage() *fyne.Container {
-	return page("Models",
-		"Installed models, including config and running stats, would go here.",
-		"Scan Models",
-		"Models found by a scan can be linked or unlinked here. Shown as a table with a row per found model, listing details and operations.",
-		"Available Models",
-		"Model metadata, whether it is running or not, and start/stop controls. Shown as a table with a row per model, listing details and operations.",
-	)
-}
-
-// backendsPage is the Backends screen: installed backends and, per backend,
-// its list of running models.
-func backendsPage() *fyne.Container {
-	return page("Backends",
-		"Installed backends, where each backend also shows a list of its running models, would go here.",
 	)
 }

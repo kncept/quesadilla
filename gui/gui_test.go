@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/kncept/quesadilla/app"
 	"github.com/kncept/quesadilla/backend/running"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 )
@@ -117,7 +118,7 @@ func TestSingleInstanceLockCrossProcess(t *testing.T) {
 func newTrayGui(t *testing.T) *QGUI {
 	t.Helper()
 	test.NewApp()
-	g := CreateGui(nil)
+	g := CreateGui(nil, app.New())
 	g.tray = fyne.NewMenu("Quesadilla")
 	return g
 }
@@ -127,7 +128,7 @@ func newTrayGui(t *testing.T) *QGUI {
 // sidebar item is selected.
 func TestMainContentSidebarAndPages(t *testing.T) {
 	test.NewApp()
-	g := CreateGui(nil)
+	g := CreateGui(nil, app.New())
 	split := g.mainContent()
 
 	// The border layout keeps the content stack first and the sidebar last.
@@ -166,7 +167,7 @@ func assertPageVisibility(t *testing.T, pages *fyne.Container, want int) {
 // window is destroyed by the driver and can never be shown again, so the
 // stale reference must be dropped.
 func TestShowMainWindowRecreatesAfterClose(t *testing.T) {
-	g := CreateGui(nil)
+	g := CreateGui(nil, app.New())
 	g.app = test.NewApp()
 
 	g.showMainWindow()
@@ -195,7 +196,7 @@ func TestShowMainWindowRecreatesAfterClose(t *testing.T) {
 // strip of wrapped text.
 func TestMainContentSidebarWidth(t *testing.T) {
 	test.NewApp()
-	g := CreateGui(nil)
+	g := CreateGui(nil, app.New())
 	split := g.mainContent()
 
 	win := test.NewWindow(split)

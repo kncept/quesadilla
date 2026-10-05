@@ -8,7 +8,7 @@ import (
 	githubbinary "github.com/kncept/quesadilla/runner/github-binary"
 )
 
-const providerId string = "llama"
+const providerId string = "llama-binary"
 
 // llamaCppRepoUrl is where the llama.cpp backend downloads its binaries from.
 const llamaCppRepoUrl = "https://github.com/ggml-org/llama.cpp"

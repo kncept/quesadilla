@@ -7,9 +7,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
-	"github.com/kncept/quesadilla/backend"
-	"github.com/kncept/quesadilla/model"
-	"github.com/kncept/quesadilla/model/repository"
+	"github.com/kncept/quesadilla/app"
 )
 
 var CLI struct {
@@ -48,17 +46,18 @@ var CLI struct {
 
 func main() {
 	ctx := kong.Parse(&CLI)
+	qApp := app.New()
 	switch ctx.Command() {
 	case "backend list":
 		backendId := CLI.Backend.List.Id
 		if backendId == "" { // no backend specified, just list them
 			fmt.Printf("Available Backends:\n%v\t%v\n", "Backend", "Name")
-			for _, b := range backend.Backends() {
+			for _, b := range qApp.Backends.Backends() {
 				fmt.Printf("%v\t%v\n", b.Id(), b.Name())
 			}
 			return
 		}
-		b := backend.Backend(backendId)
+		b := qApp.Backends.Backend(backendId)
 		if b == nil {
 			fmt.Printf("No Such Backend: %v\n", backendId)
 			return
@@ -84,7 +83,7 @@ func main() {
 		return
 	case "backend install":
 		backendId := CLI.Backend.Install.Id
-		b := backend.Backend(backendId)
+		b := qApp.Backends.Backend(backendId)
 		if b == nil {
 			fmt.Printf("No Such Backend: %v\n", backendId)
 			return
@@ -103,7 +102,7 @@ func main() {
 		b.InstallVersion(version)
 	case "backend remove":
 		backendId := CLI.Backend.Remove.Id
-		b := backend.Backend(backendId)
+		b := qApp.Backends.Backend(backendId)
 		if b == nil {
 			fmt.Printf("No Such Backend: %v\n", backendId)
 			return
@@ -124,7 +123,7 @@ func main() {
 			fmt.Printf("Please specify a backend ID (--id)\n")
 			return
 		}
-		b := backend.Backend(backendId)
+		b := qApp.Backends.Backend(backendId)
 		if b == nil {
 			fmt.Printf("No Such Backend: %v\n", backendId)
 			return
@@ -141,17 +140,13 @@ func main() {
 		}
 		return
 	case "model scan":
-		scanner := model.NewScannerRegistry()
-		scannedModels, err := scanner.ScanForModels()
+		scannedModels, err := qApp.Models.ScanForModels()
 		if err != nil {
 			panic(err)
 		}
 
 		installedModelsByName := make(map[string]bool)
-		availableModels, err := repository.ListAvailableModels()
-		if err != nil {
-			panic(err)
-		}
+		availableModels := qApp.Models.Models()
 		for _, m := range availableModels {
 			installedModelsByName[m.ModelName] = true
 		}
@@ -162,10 +157,7 @@ func main() {
 			// fmt.Printf("%+v\n", model)
 		}
 	case "model list":
-		availableModels, err := repository.ListAvailableModels()
-		if err != nil {
-			panic(err)
-		}
+		availableModels := qApp.Models.Models()
 		if len(availableModels) == 0 {
 			fmt.Printf("No Models Available\n")
 		} else {
@@ -176,10 +168,7 @@ func main() {
 		}
 	case "model link <link-id>":
 		installedModelsByName := make(map[string]bool)
-		availableModels, err := repository.ListAvailableModels()
-		if err != nil {
-			panic(err)
-		}
+		availableModels := qApp.Models.Models()
 		for _, m := range availableModels {
 			installedModelsByName[m.ModelName] = true
 		}
@@ -192,8 +181,7 @@ func main() {
 			fmt.Printf("Model already present: %s\n", modelName)
 			return
 		}
-		scanners := model.NewScannerRegistry()
-		scanner := scanners.GetScanner(scannerName)
+		scanner := qApp.Models.GetScanner(scannerName)
 		if scanner == nil {
 			fmt.Printf("Scanner not found: %s\n", scannerName)
 			return
@@ -203,21 +191,21 @@ func main() {
 			fmt.Printf("No %s model %s found", scannerName, modelName)
 			return
 		}
-		err = repository.LinkScannedModel(externalModel)
+		err := qApp.Models.LinkScannedModel(externalModel)
 		if err != nil {
 			panic(err)
 		}
 	case "model remove <model-name>":
-		err := repository.RemoveModel(CLI.Model.Remove.ModelName)
+		err := qApp.Models.RemoveModel(CLI.Model.Remove.ModelName)
 		if err != nil {
 			log.Fatal(err)
 		}
 	case "run <model-name>":
-		m := repository.GetModel(CLI.Run.ModelName)
+		m := qApp.Models.GetModel(CLI.Run.ModelName)
 		if m == nil {
 			log.Fatalf("No such model: %s", CLI.Run.ModelName)
 		}
-		b := backend.BackendForModelType(m.ModelType)
+		b := qApp.Backends.BackendForModelType(m.ModelType)
 		if b == nil {
 			log.Fatalf("No backends available for model of type %s", m.ModelType)
 		}
