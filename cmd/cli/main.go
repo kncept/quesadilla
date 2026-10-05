@@ -18,9 +18,6 @@ var CLI struct {
 			Id     string `flag:"id" help:"Backend ID (omit to list all backends)"`
 			Remote bool   `flag:"remote" help:"Also list installable versions"`
 		} `cmd:"" help:"List backends, or the versions of one backend"`
-		Scan struct {
-			Id string `flag:"id" help:"Backend ID"`
-		} `cmd:"" help:"List installable versions of a backend"`
 		Install struct {
 			Id      string `flag:"id" help:"Backend ID"`
 			Version string `flag:"version" xor:"version" help:"Version to install"`
@@ -30,6 +27,9 @@ var CLI struct {
 			Id      string `flag:"id" help:"Backend ID"`
 			Version string `flag:"version" help:"Version to remove"`
 		} `cmd:"" help:"Remove an installed version of a backend"`
+		Scan struct {
+			Id string `flag:"id" help:"Backend ID"`
+		} `cmd:"" help:"List installable versions of a backend"`
 	} `cmd:"" help:"Backend Configuration."`
 	Model struct {
 		List struct{} `cmd:""`
@@ -82,28 +82,6 @@ func main() {
 		}
 
 		return
-	case "backend scan":
-		backendId := CLI.Backend.Scan.Id
-		if backendId == "" {
-			fmt.Printf("Please specify a backend ID (--id)\n")
-			return
-		}
-		b := backend.Backend(backendId)
-		if b == nil {
-			fmt.Printf("No Such Backend: %v\n", backendId)
-			return
-		}
-
-		installableVersions := b.InstallableVersions()
-		if len(installableVersions) == 0 {
-			fmt.Printf("No Installable Versions\n")
-		} else {
-			fmt.Printf("Installable Versions:\n")
-			for _, v := range installableVersions {
-				fmt.Printf("%v\n", v)
-			}
-		}
-		return
 	case "backend install":
 		backendId := CLI.Backend.Install.Id
 		b := backend.Backend(backendId)
@@ -140,6 +118,28 @@ func main() {
 			return
 		}
 		b.RemoveVersion(version)
+	case "backend scan":
+		backendId := CLI.Backend.Scan.Id
+		if backendId == "" {
+			fmt.Printf("Please specify a backend ID (--id)\n")
+			return
+		}
+		b := backend.Backend(backendId)
+		if b == nil {
+			fmt.Printf("No Such Backend: %v\n", backendId)
+			return
+		}
+
+		installableVersions := b.InstallableVersions()
+		if len(installableVersions) == 0 {
+			fmt.Printf("No Installable Versions\n")
+		} else {
+			fmt.Printf("Installable Versions:\n")
+			for _, v := range installableVersions {
+				fmt.Printf("%v\n", v)
+			}
+		}
+		return
 	case "model scan":
 		scanner := model.NewScannerRegistry()
 		scannedModels, err := scanner.ScanForModels()

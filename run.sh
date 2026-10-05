@@ -33,7 +33,7 @@ build_cli() {
     local out_name="quesadilla-cli_${go_os}_${go_arch}${suffix}"
     echo "Building ${out_name}..."
     CGO_ENABLED=0 GOOS="${go_os}" GOARCH="${go_arch}" \
-      go build -o "${out_dir}/${out_name}" ./app/cli
+      go build -o "${out_dir}/${out_name}" ./cmd/cli
   done
 
   echo "CLI builds complete in ${out_dir}/"
@@ -61,7 +61,7 @@ build_macos() {
   mkdir -p "${out_dir}"
   local out_name="quesadilla-macos_darwin_${host_arch}"
   echo "Building ${out_name} (host)..."
-  CGO_ENABLED=1 go build -o "${out_dir}/${out_name}" ./app/macos
+  CGO_ENABLED=1 go build -o "${out_dir}/${out_name}" ./cmd/macos
 
   echo "macOS GUI build complete in ${out_dir}/"
 }
