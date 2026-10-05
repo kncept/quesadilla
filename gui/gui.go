@@ -162,6 +162,14 @@ func (this *QGUI) showMainWindow() {
 	defer this.mu.Unlock()
 	if this.mainWin == nil {
 		this.mainWin = this.app.NewWindow("Quesadilla Control Suite")
+		// A closed window is destroyed by the driver and can never be
+		// shown again (Show is a no-op on it), so drop the reference and
+		// create a fresh window the next time the control suite is opened.
+		this.mainWin.SetOnClosed(func() {
+			this.mu.Lock()
+			defer this.mu.Unlock()
+			this.mainWin = nil
+		})
 		this.mainWin.SetContent(this.mainContent())
 		this.mainWin.Resize(fyne.NewSize(800, 600))
 		this.mainWin.Show()

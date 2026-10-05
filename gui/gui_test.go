@@ -161,6 +161,34 @@ func assertPageVisibility(t *testing.T, pages *fyne.Container, want int) {
 	}
 }
 
+// TestShowMainWindowRecreatesAfterClose verifies that after the control
+// suite window is closed, opening it again creates a fresh window. A closed
+// window is destroyed by the driver and can never be shown again, so the
+// stale reference must be dropped.
+func TestShowMainWindowRecreatesAfterClose(t *testing.T) {
+	g := CreateGui(nil)
+	g.app = test.NewApp()
+
+	g.showMainWindow()
+	if g.mainWin == nil {
+		t.Fatal("expected the main window to be created")
+	}
+	first := g.mainWin
+
+	g.mainWin.Close()
+	if g.mainWin != nil {
+		t.Fatal("expected the closed window reference to be dropped")
+	}
+
+	g.showMainWindow()
+	if g.mainWin == nil {
+		t.Fatal("expected the main window to be recreated after close")
+	}
+	if g.mainWin == first {
+		t.Fatal("expected a fresh window, got the closed one")
+	}
+}
+
 // TestMainContentSidebarWidth verifies that the sidebar is wide enough to
 // show its items on a single line. With wrapping labels the list's minimum
 // width collapses to a single character and the sidebar becomes a thin
