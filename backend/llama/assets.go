@@ -86,7 +86,7 @@ func installLlamaAssets(version string, nameToDownloadUrl map[string]string) err
 				if shouldSymlinkFile(name) {
 					newname := newFileName(name)
 					if dirEntry.Name() != newname {
-						err = os.Symlink(path.Join(binDir, name), path.Join(binDir, newname))
+						err = os.Symlink(name, path.Join(binDir, newname))
 						if err != nil {
 							return err
 						}

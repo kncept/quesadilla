@@ -23,7 +23,7 @@ func LlamaBackend() definitions.Backend {
 	)
 
 	llamaBackend := definitions.NewStandardBackend(
-		providerId, "Llama.cpp",
+		providerId, "Llama.cpp precompiled binary",
 		"See https://llama.app/ for details",
 		"gguf",
 	)
