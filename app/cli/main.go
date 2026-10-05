@@ -10,39 +10,26 @@ import (
 	"github.com/kncept/quesadilla/backend"
 	"github.com/kncept/quesadilla/model"
 	"github.com/kncept/quesadilla/model/repository"
-	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
-// var CLI struct {
-// 	Configure struct {
-// 		Backend string `flag"" `
-// 		Runner  string `flag:""`
-
-// 		// Id     string `arg:"" name:"backend-id" default:""`
-// 		// Runner string `flag:"" help:"Runner ID"`
-// 	} `cmd:"" help:"Backend Configuration."`
-// 	Run struct {
-// 		Backend string `arg:"" help:"Backend id to run"`
-// 		Model   string `arg:""`
-// 	} `cmd:"" help:"run some AI"`
-// }
-
 var CLI struct {
-	// backend struct {
 	Backend struct {
 		List struct {
-			BackendAndRunnerFlags
-			Remote bool `flag:""`
-		} `cmd:""`
+			Id     string `flag:"id" help:"Backend ID (omit to list all backends)"`
+			Remote bool   `flag:"remote" help:"Also list installable versions"`
+		} `cmd:"" help:"List backends, or the versions of one backend"`
+		Scan struct {
+			Id string `flag:"id" help:"Backend ID"`
+		} `cmd:"" help:"List installable versions of a backend"`
 		Install struct {
-			BackendAndRunnerFlags
-			Version string `flag:"" xor:"version"`
-			Latest  bool   `flab:"" xor:"version"`
-		} `cmd:""`
+			Id      string `flag:"id" help:"Backend ID"`
+			Version string `flag:"version" xor:"version" help:"Version to install"`
+			Latest  bool   `flag:"latest" xor:"version" help:"Install the latest version"`
+		} `cmd:"" help:"Install a version of a backend"`
 		Remove struct {
-			BackendAndRunnerFlags
-			Version string `flag:"" xor:"version"`
-		} `cmd:""`
+			Id      string `flag:"id" help:"Backend ID"`
+			Version string `flag:"version" help:"Version to remove"`
+		} `cmd:"" help:"Remove an installed version of a backend"`
 	} `cmd:"" help:"Backend Configuration."`
 	Model struct {
 		List struct{} `cmd:""`
@@ -57,11 +44,6 @@ var CLI struct {
 	Run struct {
 		ModelName string `arg:""`
 	} `cmd:"" help:"run some AI"`
-}
-
-type BackendAndRunnerFlags struct {
-	Id     string `flag:""`
-	Runner string `flag:""`
 }
 
 func main() {
@@ -82,72 +64,70 @@ func main() {
 			return
 		}
 
-		runnerId := CLI.Backend.List.Runner
-		if runnerId == "" {
-			fmt.Printf("Runner:\n%v\t%v\n", "Runner", "Name")
-			for _, r := range b.Runners() {
-				fmt.Printf("%v\t%v\n", r.Id(), r.Name())
-			}
-			return
-		}
-
-		r := runnerDefinitions.GetRunner(b.Runners(), runnerId)
-		if r == nil {
-			fmt.Printf("No Such Runner: %v\n", runnerId)
-			return
-		}
-
-		installedVersions := r.InstalledVersions()
-		installedCount := len(installedVersions)
-		if installedCount == 0 {
+		installedVersions := b.InstalledVersions()
+		if len(installedVersions) == 0 {
 			fmt.Printf("No Installed Versions\n")
 		} else {
 			fmt.Printf("Installed Versions:\n")
-			for _, v := range r.InstalledVersions() {
+			for _, v := range installedVersions {
 				fmt.Printf("%v\n", v)
 			}
 		}
 
 		if CLI.Backend.List.Remote {
 			fmt.Printf("Installable Versions\n")
-			for _, v := range r.InstallableVersions() {
+			for _, v := range b.InstallableVersions() {
 				fmt.Printf("%v\n", v)
 			}
 		}
 
 		return
-	case "backend install":
-		backendId := CLI.Backend.Install.Id
-		runnerId := CLI.Backend.Install.Runner
+	case "backend scan":
+		backendId := CLI.Backend.Scan.Id
+		if backendId == "" {
+			fmt.Printf("Please specify a backend ID (--id)\n")
+			return
+		}
 		b := backend.Backend(backendId)
 		if b == nil {
 			fmt.Printf("No Such Backend: %v\n", backendId)
 			return
 		}
-		r := runnerDefinitions.GetRunner(b.Runners(), runnerId)
-		if r == nil {
-			fmt.Printf("No Such Runner: %v\n", runnerId)
+
+		installableVersions := b.InstallableVersions()
+		if len(installableVersions) == 0 {
+			fmt.Printf("No Installable Versions\n")
+		} else {
+			fmt.Printf("Installable Versions:\n")
+			for _, v := range installableVersions {
+				fmt.Printf("%v\n", v)
+			}
+		}
+		return
+	case "backend install":
+		backendId := CLI.Backend.Install.Id
+		b := backend.Backend(backendId)
+		if b == nil {
+			fmt.Printf("No Such Backend: %v\n", backendId)
 			return
 		}
 
 		version := CLI.Backend.Install.Version
 		if CLI.Backend.Install.Latest {
-			version = r.LatestVersion() // find latest version
+			version = b.LatestVersion() // find latest version
 			fmt.Printf("Auto-Detected latest version as: %s\n", version)
 		}
-		r.RemoveVersion(version)
-		r.InstallVersion(version)
+		if version == "" {
+			fmt.Printf("Please specify a version (or use --latest)\n")
+			return
+		}
+		b.RemoveVersion(version)
+		b.InstallVersion(version)
 	case "backend remove":
 		backendId := CLI.Backend.Remove.Id
-		runnerId := CLI.Backend.Remove.Runner
 		b := backend.Backend(backendId)
 		if b == nil {
 			fmt.Printf("No Such Backend: %v\n", backendId)
-			return
-		}
-		r := runnerDefinitions.GetRunner(b.Runners(), runnerId)
-		if r == nil {
-			fmt.Printf("No Such Runner: %v\n", runnerId)
 			return
 		}
 		version := CLI.Backend.Remove.Version
@@ -155,11 +135,11 @@ func main() {
 			fmt.Printf("Please specify a version\n")
 			return
 		}
-		if !slices.Contains(r.InstalledVersions(), version) {
+		if !slices.Contains(b.InstalledVersions(), version) {
 			fmt.Printf("Version not installed:%s\n", version)
 			return
 		}
-		r.RemoveVersion(version)
+		b.RemoveVersion(version)
 	case "model scan":
 		scanner := model.NewScannerRegistry()
 		scannedModels, err := scanner.ScanForModels()
@@ -241,6 +221,11 @@ func main() {
 		if b == nil {
 			log.Fatalf("No backends available for model of type %s", m.ModelType)
 		}
+		versions := b.InstalledVersions()
+		if len(versions) == 0 {
+			log.Fatalf("No installed version of %s - install one first", b.Name())
+		}
+		fmt.Printf("Running %s with %s (version %s)\n", m.ModelName, b.Name(), versions[0])
 		err := b.Run(m)
 		if err != nil {
 			log.Fatal(err)

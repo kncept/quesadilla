@@ -27,9 +27,19 @@ func BackendForModelType(modelType string) definitions.Backend {
 	for _, backend := range Backends() {
 		// valid for model type
 		// and has at least ONE runner
-		if slices.Contains(backend.ModelTypes(), modelType) && len(backend.Runners()) > 0 {
+		if slices.Contains(backend.ModelTypes(), modelType) && hasRunner(backend) {
 			return backend
 		}
 	}
 	return nil
+}
+
+// hasRunner reports whether the backend has at least one runner registered,
+// so it can provide (and run) versions of itself.
+func hasRunner(backend definitions.Backend) bool {
+	sb, ok := backend.(*definitions.StandardBackend)
+	if !ok {
+		return true //non-standard backends manage their own runners
+	}
+	return len(sb.Runners()) > 0
 }
