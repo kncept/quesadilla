@@ -49,7 +49,7 @@ func TestModelCell(t *testing.T) {
 	}{
 		{0, "tiny-llama"},
 		{1, "gguf"},
-		{2, ""}, // not running
+		{2, "idle"}, // not running
 		{3, "/models/gguf/tiny-llama/tiny-llama.gguf"},
 	}
 	for _, c := range cases {
@@ -90,7 +90,7 @@ func TestModelsTableListsRepository(t *testing.T) {
 	}
 }
 
-// TestModelsTableRunningColumn verifies the Running column reflects the
+// TestModelsTableRunningColumn verifies the Status column reflects the
 // process-wide running registry.
 func TestModelsTableRunningColumn(t *testing.T) {
 	test.NewApp()
@@ -99,8 +99,8 @@ func TestModelsTableRunningColumn(t *testing.T) {
 	g := CreateGui(nil, qApp)
 	table := g.newModelsTable()
 
-	if got := tableCellText(table, 0, 2); got != "" {
-		t.Errorf("running column = %q, want empty", got)
+	if got := tableCellText(table, 0, 2); got != "idle" {
+		t.Errorf("running column = %q, want %q", got, "idle")
 	}
 
 	stop := running.Default().Track(&fakeRunningModel{name: "tiny-llama"})

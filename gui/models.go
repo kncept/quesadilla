@@ -37,11 +37,7 @@ func (this *QGUI) newModelsTable() *widget.Table {
 		func() (int, int) {
 			return len(this.QApp.Models.Models()), len(modelColumns)
 		},
-		func() fyne.CanvasObject {
-			// a container, so data cells can hold a label and the action
-			// cell can hold a button
-			return &fyne.Container{}
-		},
+		modelCellFactory,
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
 			models := this.QApp.Models.Models()
 			if id.Row < 0 || id.Row >= len(models) {
@@ -73,16 +69,26 @@ func (this *QGUI) newModelsTable() *widget.Table {
 	return table
 }
 
+// modelCellFactory builds a cell of the model (and running-models) tables.
+// The cell needs a real layout: a bare &fyne.Container{} never lays out its
+// children, which leaves them at 0x0 - invisible and untappable. It also
+// needs a minimum size that fits the action button, because the table sizes
+// its rows from the template cell's minimum size; the seeded button is only
+// measured and never rendered (updateModelCell replaces the contents).
+func modelCellFactory() fyne.CanvasObject {
+	return container.NewVBox(widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), nil))
+}
+
 // updateModelCell fills one cell of the model table: a label for the data
 // columns, and the start/stop button in the last column.
 func (this *QGUI) updateModelCell(m modelDefinitions.Model, id widget.TableCellID, cell *fyne.Container) {
-	cell.Objects = nil
+	cell.RemoveAll()
 	if id.Col == len(modelColumns)-1 {
-		cell.Objects = append(cell.Objects, this.modelActionButton(m))
+		cell.Add(this.modelActionButton(m))
 	} else {
 		label := widget.NewLabel(modelCell(m, id.Col))
 		label.Wrapping = fyne.TextWrapOff
-		cell.Objects = append(cell.Objects, label)
+		cell.Add(label)
 	}
 	cell.Refresh()
 }
@@ -159,9 +165,7 @@ func (this *QGUI) runningModelsContent() fyne.CanvasObject {
 		func() (int, int) {
 			return len(running.Default().RunningModels()), len(runningModelColumns)
 		},
-		func() fyne.CanvasObject {
-			return &fyne.Container{}
-		},
+		modelCellFactory,
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
 			models := running.Default().RunningModels()
 			if id.Row < 0 || id.Row >= len(models) {
@@ -197,15 +201,15 @@ func (this *QGUI) runningModelsContent() fyne.CanvasObject {
 // updateRunningModelCell fills one cell of the running-models table: a label
 // for the data columns, and the stop button in the last column.
 func (this *QGUI) updateRunningModelCell(m runnerDefinitions.RunningModel, id widget.TableCellID, cell *fyne.Container) {
-	cell.Objects = nil
+	cell.RemoveAll()
 	if id.Col == len(runningModelColumns)-1 {
-		cell.Objects = append(cell.Objects, widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
+		cell.Add(widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
 			this.stopModel(m.ModelName())
 		}))
 	} else {
 		label := widget.NewLabel(runningModelCell(m, id.Col))
 		label.Wrapping = fyne.TextWrapOff
-		cell.Objects = append(cell.Objects, label)
+		cell.Add(label)
 	}
 	cell.Refresh()
 }
