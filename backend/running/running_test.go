@@ -2,6 +2,7 @@ package running
 
 import (
 	"testing"
+	"time"
 
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
@@ -21,6 +22,9 @@ func (f *fakeRunningModel) ProviderName() string { return "" }
 
 // RuntimeVersion implements [runnerDefinitions.RunningModel].
 func (f *fakeRunningModel) RuntimeVersion() string { return "" }
+
+// Uptime implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) Uptime() time.Duration { return 0 }
 
 // Wait implements [runnerDefinitions.RunningModel].
 func (f *fakeRunningModel) Wait() {}

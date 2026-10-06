@@ -3,6 +3,7 @@ package gui
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -31,6 +33,13 @@ type QGUI struct {
 	app     fyne.App
 	tray    *fyne.Menu
 	mainWin fyne.Window
+
+	// The pages whose content changes over time (running status, uptime);
+	// kept up to date by the status ticker in [QGUI.Start]. Nil until the
+	// main window is built.
+	modelsTable        *widget.Table
+	runningModelsTable *widget.Table
+	noRunningLabel     *widget.Label
 }
 
 // Start launches the lightweight system-tray indicator. Blocks until quit.
@@ -60,6 +69,15 @@ func (this *QGUI) Start() {
 		// no system tray on this platform, fall back to the control suite window
 		this.showMainWindow()
 	}
+
+	// Keep the dynamic pages (running status, uptime) up to date.
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			this.refreshDynamicPages()
+		}
+	}()
 
 	this.app.Run()
 }
@@ -172,6 +190,36 @@ func disabledItem(label string) *fyne.MenuItem {
 	return item
 }
 
+// refreshDynamicPages re-renders the pages whose content changes over time:
+// the installed-models table (running status and start/stop buttons) and the
+// Overview's running-models section. Safe to call from any goroutine; widgets
+// that are not attached to a window are no-ops.
+func (this *QGUI) refreshDynamicPages() {
+	fyne.Do(func() {
+		// this.mu.Lock()
+		// defer this.mu.Unlock()
+		if this.modelsTable != nil {
+			fyne.Do(func() { this.modelsTable.Refresh() })
+		}
+		if this.runningModelsTable != nil {
+			fyne.Do(func() { this.runningModelsTable.Refresh() })
+			this.updateRunningModelsVisibility()
+		}
+	})
+}
+
+// notifyError reports a problem to the user: an error dialog on the main
+// window when it is open, plus a log line either way.
+func (this *QGUI) notifyError(message string) {
+	log.Printf("gui: %s", message)
+	this.mu.Lock()
+	win := this.mainWin
+	this.mu.Unlock()
+	if win != nil {
+		dialog.NewInformation("Error", message, win).Show()
+	}
+}
+
 // showMainWindow opens (or focuses) the main control suite window.
 func (this *QGUI) showMainWindow() {
 	this.mu.Lock()
@@ -201,7 +249,7 @@ func (this *QGUI) mainContent() *fyne.Container {
 	sidebarItems := []string{"Overview", "Models", "Backends"}
 
 	// One content page per sidebar item; only the selected page is shown.
-	pages := container.NewStack(overviewPage(), this.modelsPage(), this.backendsPage())
+	pages := container.NewStack(this.overviewPage(), this.modelsPage(), this.backendsPage())
 
 	// The list sizes itself to its template item, so use the longest item
 	// as the template to guarantee the sidebar is wide enough for all items.
@@ -270,28 +318,16 @@ func wrappedLabel(text string) *widget.Label {
 	return label
 }
 
-// page builds one content page: a bold title, an optional intro, and a set
-// of sections. The page is padded so it fills the content area. Sections
-// are passed as alternating heading/body pairs.
-func page(title, intro string, sections ...string) *fyne.Container {
-	objects := []fyne.CanvasObject{headingLabel(title), widget.NewSeparator()}
-	if intro != "" {
-		objects = append(objects, wrappedLabel(intro), widget.NewSeparator())
-	}
-	for i := 0; i+1 < len(sections); i += 2 {
-		objects = append(objects, headingLabel(sections[i]), wrappedLabel(sections[i+1]))
-		if i+2 < len(sections) {
-			objects = append(objects, widget.NewSeparator())
-		}
-	}
-	return container.NewPadded(container.NewVBox(objects...))
-}
-
-// overviewPage is the Overview screen: stats and the running models section.
-func overviewPage() *fyne.Container {
-	return page("Overview",
-		"Overview stats would go here.",
-		"Running Models",
-		"All running models with stats, including uptime, would be listed here. Each model has a 'stop model' button.",
+// overviewPage is the Overview screen: stats and the running models section,
+// which lists every running model with stats (including uptime) and a stop
+// button per model.
+func (this *QGUI) overviewPage() fyne.CanvasObject {
+	header := container.NewVBox(
+		headingLabel("Overview"),
+		wrappedLabel("Overview stats would go here."),
+		widget.NewSeparator(),
+		headingLabel("Running Models"),
+		widget.NewSeparator(),
 	)
+	return container.NewPadded(container.NewBorder(header, nil, nil, nil, this.runningModelsContent()))
 }

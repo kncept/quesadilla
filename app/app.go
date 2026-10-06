@@ -4,6 +4,7 @@
 package app
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -18,8 +19,9 @@ import (
 
 // QApp keeps references to the application's backend and model repositories.
 // Both repositories are created (and scanned) once, when QApp is created. It
-// also owns the running-model registry and the wait group that back [QApp.Start]
-// and [QApp.AwaitAll], so callers can launch models without blocking and later
+// tracks the running models in the process-wide registry (shared with the GUI
+// and the tray) and owns the wait group that back [QApp.Start] and
+// [QApp.AwaitAll], so callers can launch models without blocking and later
 // wait for them all to finish.
 type QApp struct {
 	Backends *backend.Repository
@@ -35,7 +37,9 @@ func New() *QApp {
 	return &QApp{
 		Backends: backend.NewRepository(),
 		Models:   repository.NewRepository(),
-		registry: running.NewRegistry(),
+		// the process-wide registry, so the GUI's running status and the
+		// tray menu see the models QApp.Start has launched
+		registry: running.Default(),
 	}
 }
 
@@ -44,6 +48,7 @@ func New() *QApp {
 // long as that run lives, so AwaitAll can later wait for it (and any other
 // started models) to finish.
 func (this *QApp) Start(backend backendDefinitions.Backend, model *modelDefinitions.Model) *sync.WaitGroup {
+	fmt.Printf("Starting %s on %s\n", model.ModelName, backend.Id())
 	this.allRunsWaitGroup.Add(1)
 	singleAwaitGroup := new(sync.WaitGroup)
 	singleAwaitGroup.Add(1)
@@ -79,6 +84,19 @@ func (this *QApp) AwaitAll() {
 // RunningModels returns the models currently running, sorted by name.
 func (this *QApp) RunningModels() []runnerDefinitions.RunningModel {
 	return this.registry.RunningModels()
+}
+
+// Stop asks the named model to quit, if it is running. It reports whether a
+// running model was found. The quit is requested asynchronously; the model
+// leaves the registry when its process actually exits.
+func (this *QApp) Stop(modelName string) bool {
+	for _, m := range this.registry.RunningModels() {
+		if m.ModelName() == modelName {
+			m.SendSigQuit()
+			return true
+		}
+	}
+	return false
 }
 
 func (this *QApp) StopAll() {

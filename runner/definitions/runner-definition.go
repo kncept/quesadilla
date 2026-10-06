@@ -3,12 +3,14 @@ package definitions
 import (
 	"os/exec"
 	"syscall"
+	"time"
 )
 
 type RunningModel interface {
 	ModelName() string
 	ProviderName() string
 	RuntimeVersion() string
+	Uptime() time.Duration
 
 	Wait()        // wait for this to end
 	SendSigQuit() // please quit
@@ -21,6 +23,7 @@ func RunDetailsFromCmd(cmd *exec.Cmd, modelName string, providerName string, run
 		modelName:      modelName,
 		providerName:   providerName,
 		runtimeVersion: runtimeVersion,
+		startedAt:      time.Now(),
 	}
 }
 
@@ -29,6 +32,12 @@ type cmdRunningModel struct {
 	modelName      string
 	providerName   string
 	runtimeVersion string
+	startedAt      time.Time
+}
+
+// Uptime implements [RunningModel].
+func (this *cmdRunningModel) Uptime() time.Duration {
+	return time.Since(this.startedAt)
 }
 
 // Wait implements [RunningModel].
