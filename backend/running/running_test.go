@@ -3,14 +3,41 @@ package running
 import (
 	"testing"
 
-	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
+
+// fakeRunningModel is a minimal runnerDefinitions.RunningModel for tests. The
+// tests only read its name; the signal methods are no-ops because a fake is
+// never signalled.
+type fakeRunningModel struct {
+	name string
+}
+
+// ModelName implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) ModelName() string { return f.name }
+
+// ProviderName implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) ProviderName() string { return "" }
+
+// RuntimeVersion implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) RuntimeVersion() string { return "" }
+
+// Wait implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) Wait() {}
+
+// SendSigQuit implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) SendSigQuit() {}
+
+// SendSigKill implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) SendSigKill() {}
+
+var _ runnerDefinitions.RunningModel = (*fakeRunningModel)(nil)
 
 func TestTrackAndStop(t *testing.T) {
 	r := NewRegistry()
 
-	a := modelDefinitions.Model{ModelName: "model-a", ModelType: "gguf"}
-	b := modelDefinitions.Model{ModelName: "model-b", ModelType: "gguf"}
+	a := &fakeRunningModel{name: "model-a"}
+	b := &fakeRunningModel{name: "model-b"}
 
 	stopA := r.Track(a)
 	stopB := r.Track(b)
@@ -27,15 +54,15 @@ func TestTrackAndStop(t *testing.T) {
 	}
 
 	stopB()
-	if got := r.Models(); len(got) != 0 {
-		t.Fatalf("expected no models, got: %v", got)
+	if got := len(r.RunningModels()); got != 0 {
+		t.Fatalf("expected no models, got: %d", got)
 	}
 }
 
 func TestModelsSorted(t *testing.T) {
 	r := NewRegistry()
-	r.Track(modelDefinitions.Model{ModelName: "zeta"})
-	r.Track(modelDefinitions.Model{ModelName: "alpha"})
+	r.Track(&fakeRunningModel{name: "zeta"})
+	r.Track(&fakeRunningModel{name: "alpha"})
 
 	got := r.Names()
 	if len(got) != 2 || got[0] != "alpha" || got[1] != "zeta" {

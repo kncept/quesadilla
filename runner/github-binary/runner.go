@@ -7,14 +7,11 @@ import (
 	"path"
 	"regexp"
 
-	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 	"github.com/kncept/quesadilla/utils/github"
 	"github.com/kncept/quesadilla/utils/qenv"
 )
 
-var _ runnerDefinitions.Runner = (*githubBinaryRunner)(nil)
-
-func NewGithubBinaryRunnerFromUrl(providerId string, rawURL string, assetBinaryHandler AssetBinaryHandler) runnerDefinitions.Runner {
+func NewGithubBinaryRunnerFromUrl(providerId string, rawURL string, assetBinaryHandler AssetBinaryHandler) *GithubBinaryDownloader {
 	owner, repository, err := extractOwnerAndRepositoryFromUrl(rawURL)
 	if err != nil {
 		panic(err)
@@ -32,8 +29,8 @@ func extractOwnerAndRepositoryFromUrl(rawURL string) (string, string, error) {
 
 	return matches[1], matches[2], nil
 }
-func NewGithubBinaryRunnerFromRepoOwnerAndName(providerId string, repoOwner string, repoName string, assetBinaryHandler AssetBinaryHandler) runnerDefinitions.Runner {
-	return &githubBinaryRunner{
+func NewGithubBinaryRunnerFromRepoOwnerAndName(providerId string, repoOwner string, repoName string, assetBinaryHandler AssetBinaryHandler) *GithubBinaryDownloader {
+	return &GithubBinaryDownloader{
 		providerId:         providerId,
 		repoOwner:          repoOwner,
 		repoName:           repoName,
@@ -44,7 +41,7 @@ func NewGithubBinaryRunnerFromRepoOwnerAndName(providerId string, repoOwner stri
 // filter the FULL list of assets to a list of just what we need to download
 type AssetBinaryHandler func(version string, nameToDownloadUrl map[string]string) error
 
-type githubBinaryRunner struct {
+type GithubBinaryDownloader struct {
 	providerId         string
 	repoOwner          string
 	repoName           string
@@ -52,13 +49,13 @@ type githubBinaryRunner struct {
 }
 
 // RemoveVersion implements [definitions.Runner].
-func (this *githubBinaryRunner) RemoveVersion(version string) error {
+func (this *GithubBinaryDownloader) RemoveVersion(version string) error {
 	downloadsDirectory := qenv.QBinariesDirectory(this.providerId)
 	return os.RemoveAll(path.Join(downloadsDirectory, version))
 }
 
 // LatestVersion implements [definitions.Runner].
-func (this *githubBinaryRunner) LatestVersion() string {
+func (this *GithubBinaryDownloader) LatestVersion() string {
 	releaseFinder := github.NewGithubReleaseFinder(this.repoOwner, this.repoName)
 
 	release, err := releaseFinder.FindLatestRelease()
@@ -73,7 +70,7 @@ func (this *githubBinaryRunner) LatestVersion() string {
 }
 
 // InstallVersion implements [definitions.Runner].
-func (this *githubBinaryRunner) InstallVersion(version string) error {
+func (this *GithubBinaryDownloader) InstallVersion(version string) error {
 	releaseFinder := github.NewGithubReleaseFinder(this.repoOwner, this.repoName)
 
 	release, err := releaseFinder.ReleaseDetailsFromTag(version)
@@ -92,7 +89,7 @@ func (this *githubBinaryRunner) InstallVersion(version string) error {
 }
 
 // InstallableVersions implements [definitions.Runner].
-func (this *githubBinaryRunner) InstallableVersions() []string {
+func (this *GithubBinaryDownloader) InstallableVersions() []string {
 	releaseFinder := github.NewGithubReleaseFinder(this.repoOwner, this.repoName)
 
 	releases, err := releaseFinder.SmartListReleases("v") //
@@ -108,7 +105,7 @@ func (this *githubBinaryRunner) InstallableVersions() []string {
 }
 
 // InstalledVersions implements [definitions.Runner].
-func (this *githubBinaryRunner) InstalledVersions() []string {
+func (this *GithubBinaryDownloader) InstalledVersions() []string {
 	downloadsDirectory := qenv.QBinariesDirectory(this.providerId)
 	versions := make([]string, 0)
 	entries, err := os.ReadDir(downloadsDirectory)
@@ -128,21 +125,21 @@ func (this *githubBinaryRunner) InstalledVersions() []string {
 }
 
 // ProviderId implements [definitions.Runner].
-func (this *githubBinaryRunner) ProviderId() string {
+func (this *GithubBinaryDownloader) ProviderId() string {
 	return this.providerId
 }
 
 // Description implements [definition.Runner].
-func (this *githubBinaryRunner) Description() string {
+func (this *GithubBinaryDownloader) Description() string {
 	return "runs a downloaded binary"
 }
 
 // Id implements [definition.Runner].
-func (this *githubBinaryRunner) Id() string {
+func (this *GithubBinaryDownloader) Id() string {
 	return "binary"
 }
 
 // Name implements [definition.Runner].
-func (this *githubBinaryRunner) Name() string {
+func (this *GithubBinaryDownloader) Name() string {
 	return "Binary (from Github)"
 }

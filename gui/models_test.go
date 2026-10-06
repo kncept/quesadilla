@@ -11,6 +11,7 @@ import (
 	"github.com/kncept/quesadilla/app"
 	"github.com/kncept/quesadilla/backend/running"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
 // newTestQApp points HOME at a temporary directory and installs the given
@@ -93,7 +94,7 @@ func TestModelsTableRunningColumn(t *testing.T) {
 	test.NewApp()
 	qApp := newTestQApp(t, "tiny-llama")
 
-	stop := running.Default().Track(modelDefinitions.Model{ModelName: "tiny-llama", ModelType: "gguf"})
+	stop := running.Default().Track(&fakeRunningModel{name: "tiny-llama"})
 	defer stop()
 
 	g := CreateGui(nil, qApp)
@@ -103,6 +104,33 @@ func TestModelsTableRunningColumn(t *testing.T) {
 		t.Errorf("running column = %q, want %q", got, "yes")
 	}
 }
+
+// fakeRunningModel is a minimal runnerDefinitions.RunningModel for tests. The
+// GUI only reads its name; the signal methods are no-ops because a fake is
+// never signalled.
+type fakeRunningModel struct {
+	name string
+}
+
+// ModelName implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) ModelName() string { return f.name }
+
+// ProviderName implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) ProviderName() string { return "" }
+
+// RuntimeVersion implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) RuntimeVersion() string { return "" }
+
+// Wait implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) Wait() {}
+
+// SendSigQuit implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) SendSigQuit() {}
+
+// SendSigKill implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) SendSigKill() {}
+
+var _ runnerDefinitions.RunningModel = (*fakeRunningModel)(nil)
 
 // tableCellText renders one data cell and returns its label text.
 func tableCellText(table *widget.Table, row, col int) string {

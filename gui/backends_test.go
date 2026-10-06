@@ -7,13 +7,13 @@ import (
 
 	backendDefinitions "github.com/kncept/quesadilla/backend/definitions"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
 // fakeBackend is a definitions.Backend with canned version lists, used to
 // test the backends screen without touching the network.
 type fakeBackend struct {
 	id          string
-	name        string
 	description string
 	modelTypes  []string
 	installed   []string
@@ -25,7 +25,6 @@ type fakeBackend struct {
 }
 
 func (f *fakeBackend) Id() string                  { return f.id }
-func (f *fakeBackend) Name() string                { return f.name }
 func (f *fakeBackend) Description() string         { return f.description }
 func (f *fakeBackend) ModelTypes() []string        { return f.modelTypes }
 func (f *fakeBackend) InstalledVersions() []string { return f.installed }
@@ -33,10 +32,12 @@ func (f *fakeBackend) InstallableVersions() []string {
 	f.installableCalls++
 	return f.installable
 }
-func (f *fakeBackend) LatestVersion() string             { return "" }
-func (f *fakeBackend) InstallVersion(string) error       { return nil }
-func (f *fakeBackend) RemoveVersion(string) error        { return nil }
-func (f *fakeBackend) Run(*modelDefinitions.Model) error { return nil }
+func (f *fakeBackend) LatestVersion() string       { return "" }
+func (f *fakeBackend) InstallVersion(string) error { return nil }
+func (f *fakeBackend) RemoveVersion(string) error  { return nil }
+func (f *fakeBackend) Start(*modelDefinitions.Model) (runnerDefinitions.RunningModel, error) {
+	return nil, nil
+}
 
 var _ backendDefinitions.Backend = (*fakeBackend)(nil)
 
@@ -53,7 +54,6 @@ func TestFormatVersionList(t *testing.T) {
 func TestBackendCell(t *testing.T) {
 	b := &fakeBackend{
 		id:         "llama",
-		name:       "Llama.cpp",
 		modelTypes: []string{"gguf"},
 		installed:  []string{"b11401"},
 	}
@@ -62,10 +62,9 @@ func TestBackendCell(t *testing.T) {
 		col  int
 		want string
 	}{
-		{0, "Llama.cpp"},
-		{1, "llama"},
-		{2, "gguf"},
-		{3, "b11401"},
+		{0, "llama"},
+		{1, "gguf"},
+		{2, "b11401"},
 	}
 	for _, c := range cases {
 		if got := backendCell(b, c.col); got != c.want {
@@ -80,8 +79,8 @@ func TestBackendsTableListsBackends(t *testing.T) {
 	test.NewApp()
 
 	backends := []backendDefinitions.Backend{
-		&fakeBackend{id: "llama", name: "Llama.cpp", modelTypes: []string{"gguf"}},
-		&fakeBackend{id: "other", name: "Other", modelTypes: []string{"onnx"}},
+		&fakeBackend{id: "llama", modelTypes: []string{"gguf"}},
+		&fakeBackend{id: "other", modelTypes: []string{"onnx"}},
 	}
 
 	table := newBackendsTable(backends)
@@ -96,13 +95,13 @@ func TestBackendsTableListsBackends(t *testing.T) {
 		t.Error("expected the table to show a header row")
 	}
 
-	names := map[string]bool{}
+	ids := map[string]bool{}
 	for i := 0; i < rows; i++ {
-		names[tableCellText(table, i, 0)] = true
+		ids[tableCellText(table, i, 0)] = true
 	}
-	for _, want := range []string{"Llama.cpp", "Other"} {
-		if !names[want] {
-			t.Errorf("table missing backend %q (got %v)", want, names)
+	for _, want := range []string{"llama", "other"} {
+		if !ids[want] {
+			t.Errorf("table missing backend %q (got %v)", want, ids)
 		}
 	}
 }
@@ -112,7 +111,7 @@ func TestBackendsTableListsBackends(t *testing.T) {
 func TestBackendsTableDoesNotFetchInstallable(t *testing.T) {
 	test.NewApp()
 
-	fake := &fakeBackend{id: "llama", name: "Llama.cpp", modelTypes: []string{"gguf"}}
+	fake := &fakeBackend{id: "llama", modelTypes: []string{"gguf"}}
 	table := newBackendsTable([]backendDefinitions.Backend{fake})
 
 	// Render every cell in the table.

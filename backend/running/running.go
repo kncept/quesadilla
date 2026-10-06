@@ -7,13 +7,13 @@ import (
 	"sort"
 	"sync"
 
-	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
 // Registry is a thread-safe list of the models currently running.
 type Registry struct {
-	mu     sync.Mutex
-	models []modelDefinitions.Model
+	mu            sync.Mutex
+	runningModels []runnerDefinitions.RunningModel
 }
 
 func NewRegistry() *Registry {
@@ -30,9 +30,9 @@ func Default() *Registry {
 // Track registers model as running and returns a function that stops
 // tracking it. The returned function is safe to call more than once
 // (eg via defer) and from any goroutine.
-func (r *Registry) Track(model modelDefinitions.Model) func() {
+func (r *Registry) Track(runningModel runnerDefinitions.RunningModel) func() {
 	r.mu.Lock()
-	r.models = append(r.models, model)
+	r.runningModels = append(r.runningModels, runningModel)
 	r.mu.Unlock()
 
 	var stopOnce sync.Once
@@ -40,9 +40,9 @@ func (r *Registry) Track(model modelDefinitions.Model) func() {
 		stopOnce.Do(func() {
 			r.mu.Lock()
 			defer r.mu.Unlock()
-			for i, m := range r.models {
-				if m == model {
-					r.models = append(r.models[:i], r.models[i+1:]...)
+			for i, m := range r.runningModels {
+				if m == runningModel {
+					r.runningModels = append(r.runningModels[:i], r.runningModels[i+1:]...)
 					break
 				}
 			}
@@ -51,23 +51,23 @@ func (r *Registry) Track(model modelDefinitions.Model) func() {
 }
 
 // Models returns the models currently running, sorted by name.
-func (r *Registry) Models() []modelDefinitions.Model {
+func (r *Registry) RunningModels() []runnerDefinitions.RunningModel {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	models := make([]modelDefinitions.Model, len(r.models))
-	copy(models, r.models)
-	sort.Slice(models, func(i, j int) bool {
-		return models[i].ModelName < models[j].ModelName
+	runningModels := make([]runnerDefinitions.RunningModel, len(r.runningModels))
+	copy(runningModels, r.runningModels)
+	sort.Slice(runningModels, func(i, j int) bool {
+		return runningModels[i].ModelName() < runningModels[j].ModelName()
 	})
-	return models
+	return runningModels
 }
 
 // Names returns the names of the models currently running, sorted.
 func (r *Registry) Names() []string {
-	models := r.Models()
+	models := r.RunningModels()
 	names := make([]string, len(models))
 	for i, m := range models {
-		names[i] = m.ModelName
+		names[i] = m.ModelName()
 	}
 	return names
 }

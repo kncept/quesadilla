@@ -50,19 +50,9 @@ func (this *Repository) Backend(id string) definitions.Backend {
 // and has at least one runner registered.
 func (this *Repository) BackendForModelType(modelType string) definitions.Backend {
 	for _, backend := range this.backends {
-		if slices.Contains(backend.ModelTypes(), modelType) && hasRunner(backend) {
+		if slices.Contains(backend.ModelTypes(), modelType) && len(backend.InstalledVersions()) > 0 {
 			return backend
 		}
 	}
 	return nil
-}
-
-// hasRunner reports whether the backend has at least one runner registered,
-// so it can provide (and run) versions of itself.
-func hasRunner(backend definitions.Backend) bool {
-	sb, ok := backend.(*definitions.StandardBackend)
-	if !ok {
-		return true //non-standard backends manage their own runners
-	}
-	return len(sb.Runners()) > 0
 }

@@ -1,24 +1,63 @@
 package definitions
 
-type Runner interface {
-	InstalledVersions() []string
-	InstallableVersions() []string
-	LatestVersion() string //empty string if indeterminable
-	InstallVersion(version string) error
-	RemoveVersion(version string) error
+import (
+	"os/exec"
+	"syscall"
+)
 
-	ProviderId() string
+type RunningModel interface {
+	ModelName() string
+	ProviderName() string
+	RuntimeVersion() string
 
-	Id() string
-	Name() string
-	Description() string
+	Wait()        // wait for this to end
+	SendSigQuit() // please quit
+	SendSigKill() // too slow, die!
 }
 
-func GetRunner(runners []Runner, id string) Runner {
-	for _, r := range runners {
-		if r.Id() == id {
-			return r
-		}
+func RunDetailsFromCmd(cmd *exec.Cmd, modelName string, providerName string, runtimeVersion string) RunningModel {
+	return &cmdRunningModel{
+		cmd:            cmd,
+		modelName:      modelName,
+		providerName:   providerName,
+		runtimeVersion: runtimeVersion,
 	}
-	return nil
+}
+
+type cmdRunningModel struct {
+	cmd            *exec.Cmd
+	modelName      string
+	providerName   string
+	runtimeVersion string
+}
+
+// Wait implements [RunningModel].
+func (this *cmdRunningModel) Wait() {
+	this.cmd.Wait()
+}
+
+// ModelName implements [RunningModel].
+func (this *cmdRunningModel) ModelName() string {
+	return this.modelName
+}
+
+// ProviderName implements [RunningModel].
+func (this *cmdRunningModel) ProviderName() string {
+	return this.providerName
+}
+
+// RuntimeVersion implements [RunningModel].
+func (this *cmdRunningModel) RuntimeVersion() string {
+	return this.runtimeVersion
+}
+
+// SendSigKill implements [RunningModel].
+func (c *cmdRunningModel) SendSigKill() {
+	c.cmd.Process.Signal(syscall.SIGKILL)
+}
+
+// SendSigQuit implements [RunningModel].
+func (c *cmdRunningModel) SendSigQuit() {
+	c.cmd.Process.Signal(syscall.SIGQUIT)
+
 }

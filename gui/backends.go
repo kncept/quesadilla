@@ -11,7 +11,7 @@ import (
 )
 
 // backendColumns are the table headers shown for the backend list.
-var backendColumns = []string{"Name", "ID", "Model Types", "Installed Versions"}
+var backendColumns = []string{"ID", "Model Types", "Installed Versions"}
 
 const noneInstalled = "(none installed)"
 
@@ -55,10 +55,9 @@ func newBackendsTable(backends []backendDefinitions.Backend) *widget.Table {
 		}
 	}
 
-	table.SetColumnWidth(0, 160) // Name
-	table.SetColumnWidth(1, 80)  // ID
-	table.SetColumnWidth(2, 120) // Model Types
-	table.SetColumnWidth(3, 200) // Installed Versions
+	table.SetColumnWidth(0, 80)  // ID
+	table.SetColumnWidth(1, 120) // Model Types
+	table.SetColumnWidth(2, 200) // Installed Versions
 
 	return table
 }
@@ -67,12 +66,10 @@ func newBackendsTable(backends []backendDefinitions.Backend) *widget.Table {
 func backendCell(b backendDefinitions.Backend, col int) string {
 	switch col {
 	case 0:
-		return b.Name()
-	case 1:
 		return b.Id()
-	case 2:
+	case 1:
 		return strings.Join(b.ModelTypes(), ", ")
-	case 3:
+	case 2:
 		return formatVersionList(b.InstalledVersions(), noneInstalled)
 	default:
 		return ""

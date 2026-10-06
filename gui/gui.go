@@ -64,6 +64,20 @@ func (this *QGUI) Start() {
 	this.app.Run()
 }
 
+func (this *QGUI) Quit() {
+	this.mu.Lock()
+	defer this.mu.Unlock()
+	if this.mainWin != nil {
+		this.mainWin.Close()
+		this.mainWin = nil
+	}
+
+	this.QApp.StopAll()
+
+	// close tray
+	this.app.Quit()
+}
+
 // setupTray installs the lightweight indicator: a tray icon whose menu
 // launches the main control suite and lists the running models.
 func (this *QGUI) setupTray(trayApp desktop.App) {
@@ -143,7 +157,7 @@ func (this *QGUI) refreshTrayMenu() {
 	}
 
 	items = append(items, fyne.NewMenuItemSeparator())
-	quit := fyne.NewMenuItem("Quit", func() { this.app.Quit() })
+	quit := fyne.NewMenuItem("Quit", func() { this.Quit() })
 	quit.IsQuit = true
 	items = append(items, quit)
 

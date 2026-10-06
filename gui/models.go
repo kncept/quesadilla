@@ -83,8 +83,8 @@ func modelCell(m modelDefinitions.Model, col int) string {
 
 // isRunning reports whether a model with the given name is currently running.
 func isRunning(modelName string) bool {
-	for _, m := range running.Default().Models() {
-		if m.ModelName == modelName {
+	for _, m := range running.Default().RunningModels() {
+		if m.ModelName() == modelName {
 			return true
 		}
 	}

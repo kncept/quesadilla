@@ -6,12 +6,14 @@ package app
 import (
 	"log"
 	"sync"
+	"time"
 
 	"github.com/kncept/quesadilla/backend"
-	"github.com/kncept/quesadilla/backend/definitions"
+	backendDefinitions "github.com/kncept/quesadilla/backend/definitions"
 	"github.com/kncept/quesadilla/backend/running"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/model/repository"
+	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
 // QApp keeps references to the application's backend and model repositories.
@@ -41,21 +43,31 @@ func New() *QApp {
 // backend's run in its own goroutine and records the model as running for as
 // long as that run lives, so AwaitAll can later wait for it (and any other
 // started models) to finish.
-func (this *QApp) Start(backend definitions.Backend, model *modelDefinitions.Model) *sync.WaitGroup {
-	stopTracking := this.registry.Track(*model)
+func (this *QApp) Start(backend backendDefinitions.Backend, model *modelDefinitions.Model) *sync.WaitGroup {
 	this.allRunsWaitGroup.Add(1)
 	singleAwaitGroup := new(sync.WaitGroup)
 	singleAwaitGroup.Add(1)
+	waitForStart := new(sync.WaitGroup)
+	waitForStart.Add(1)
 	go func() {
 		defer this.allRunsWaitGroup.Done()
 		defer singleAwaitGroup.Done()
+		runningModel, err := backend.Start(model)
+		stopTracking := this.registry.Track(runningModel)
 		defer stopTracking()
-		if err := backend.Run(model); err != nil {
+		if err != nil {
 			// The run lives in its own goroutine, so a failure can't be
 			// returned to the caller; report it here instead.
 			log.Printf("app: running %s failed: %v", model.ModelName, err)
 		}
+		// we have started, allow parent 'Start' function to complete
+		waitForStart.Done()
+
+		// now the goroutine waits, to make sure that 'on finish' events
+		// (stopTracking and wait groups) trigger correctly
+		runningModel.Wait()
 	}()
+	waitForStart.Wait()
 	return singleAwaitGroup
 }
 
@@ -65,6 +77,24 @@ func (this *QApp) AwaitAll() {
 }
 
 // RunningModels returns the models currently running, sorted by name.
-func (this *QApp) RunningModels() []modelDefinitions.Model {
-	return this.registry.Models()
+func (this *QApp) RunningModels() []runnerDefinitions.RunningModel {
+	return this.registry.RunningModels()
+}
+
+func (this *QApp) StopAll() {
+	for _, m := range this.registry.RunningModels() {
+		m.SendSigQuit()
+	}
+	sleepTime := 500 * time.Millisecond
+
+	// wait up to 30 seconds for them all to finish
+	endTime := time.Now().UnixMilli() + (30 * time.Second).Milliseconds()
+	for time.Now().UnixMilli() < endTime && len(this.registry.RunningModels()) > 0 {
+		time.Sleep(sleepTime)
+	}
+
+	// yeah, just kill them now
+	for _, m := range this.registry.RunningModels() {
+		m.SendSigKill()
+	}
 }

@@ -53,7 +53,7 @@ func main() {
 		if backendId == "" { // no backend specified, just list them
 			fmt.Printf("Available Backends:\n%v\t%v\n", "Backend", "Name")
 			for _, b := range qApp.Backends.Backends() {
-				fmt.Printf("%v\t%v\n", b.Id(), b.Name())
+				fmt.Printf("%v\t%v\n", b.Id(), b.Description())
 			}
 			return
 		}
@@ -211,12 +211,10 @@ func main() {
 		}
 		versions := b.InstalledVersions()
 		if len(versions) == 0 {
-			log.Fatalf("No installed version of %s - install one first", b.Name())
+			log.Fatalf("No installed version of %s - install one first", b.Id())
 		}
-		fmt.Printf("Running %s with %s (version %s)\n", m.ModelName, b.Name(), versions[0])
-		qApp.Start(b, m)
-		qApp.AwaitAll()
-
+		fmt.Printf("Running %s with %s (version %s)\n", m.ModelName, b.Id(), versions[0])
+		qApp.Start(b, m).Wait()
 	default:
 		fmt.Printf("Fall through\n%+v\n%v\n", CLI, ctx.Command())
 		panic(ctx.Command())

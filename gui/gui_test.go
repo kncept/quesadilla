@@ -16,7 +16,6 @@ import (
 
 	"github.com/kncept/quesadilla/app"
 	"github.com/kncept/quesadilla/backend/running"
-	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 )
 
 func menuLabels(g *QGUI) []string {
@@ -228,7 +227,7 @@ func TestTrayMenuNoModelsRunning(t *testing.T) {
 func TestTrayMenuModelsRunning(t *testing.T) {
 	g := newTrayGui(t)
 
-	stop := running.Default().Track(modelDefinitions.Model{ModelName: "tiny-llama", ModelType: "gguf"})
+	stop := running.Default().Track(&fakeRunningModel{name: "tiny-llama"})
 	defer stop()
 	g.refreshTrayMenu()
 
@@ -238,7 +237,7 @@ func TestTrayMenuModelsRunning(t *testing.T) {
 	}
 
 	// a model added later is picked up on the next refresh
-	stop2 := running.Default().Track(modelDefinitions.Model{ModelName: "big-llama", ModelType: "gguf"})
+	stop2 := running.Default().Track(&fakeRunningModel{name: "big-llama"})
 	defer stop2()
 	g.refreshTrayMenu()
 
