@@ -24,6 +24,14 @@ Includes a list of running models
 ### Running Models section
 Shows all running models, and some stats, including uptime.
 Has a 'stop model' button that will top the model
+Has a 'view logs' button that opens the log viewer for that model
+
+## Log Viewer
+A simple, drill-in window opened from a running model's 'view logs' button.
+It shows the model's recent captured log lines (kept in memory, up to a
+configurable maximum per model, default 200 lines) in a scrollable area, and
+keeps updating while the model is still running.
+Has a 'back' button at the bottom that closes the window
 
 ## Models Page
 Installed Models (including config and running stats)

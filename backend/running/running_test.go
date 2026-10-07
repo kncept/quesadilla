@@ -26,6 +26,9 @@ func (f *fakeRunningModel) RuntimeVersion() string { return "" }
 // Uptime implements [runnerDefinitions.RunningModel].
 func (f *fakeRunningModel) Uptime() time.Duration { return 0 }
 
+// Logs implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) Logs() []string { return nil }
+
 // Wait implements [runnerDefinitions.RunningModel].
 func (f *fakeRunningModel) Wait() {}
 

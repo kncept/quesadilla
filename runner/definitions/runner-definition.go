@@ -11,19 +11,21 @@ type RunningModel interface {
 	ProviderName() string
 	RuntimeVersion() string
 	Uptime() time.Duration
+	Logs() []string // recent captured log lines, oldest first
 
 	Wait()        // wait for this to end
 	SendSigQuit() // please quit
 	SendSigKill() // too slow, die!
 }
 
-func RunDetailsFromCmd(cmd *exec.Cmd, modelName string, providerName string, runtimeVersion string) RunningModel {
+func RunDetailsFromCmd(cmd *exec.Cmd, modelName string, providerName string, runtimeVersion string, logs *LogBuffer) RunningModel {
 	return &cmdRunningModel{
 		cmd:            cmd,
 		modelName:      modelName,
 		providerName:   providerName,
 		runtimeVersion: runtimeVersion,
 		startedAt:      time.Now(),
+		logs:           logs,
 	}
 }
 
@@ -33,11 +35,22 @@ type cmdRunningModel struct {
 	providerName   string
 	runtimeVersion string
 	startedAt      time.Time
+	logs           *LogBuffer
 }
 
 // Uptime implements [RunningModel].
 func (this *cmdRunningModel) Uptime() time.Duration {
 	return time.Since(this.startedAt)
+}
+
+// Logs implements [RunningModel]. It returns the recent log lines captured
+// from the process's output, oldest first. It is safe to call after the
+// process has exited, in which case it returns the last captured lines.
+func (this *cmdRunningModel) Logs() []string {
+	if this.logs == nil {
+		return nil
+	}
+	return this.logs.Lines()
 }
 
 // Wait implements [RunningModel].

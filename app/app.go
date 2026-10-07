@@ -58,16 +58,20 @@ func (this *QApp) Start(backend backendDefinitions.Backend, model *modelDefiniti
 		defer this.allRunsWaitGroup.Done()
 		defer singleAwaitGroup.Done()
 		runningModel, err := backend.Start(model)
-		stopTracking := this.registry.Track(runningModel)
-		defer stopTracking()
 		if err != nil {
+			waitForStart.Done()
 			// The run lives in its own goroutine, so a failure can't be
 			// returned to the caller; report it here instead.
 			log.Printf("app: running %s failed: %v", model.ModelName, err)
 		}
+
+		stopTracking := this.registry.Track(runningModel)
+		defer stopTracking()
+
 		// we have started, allow parent 'Start' function to complete
 		waitForStart.Done()
 
+		fmt.Printf("Started model %s on %s\n", model.ModelName, backend.Id())
 		// now the goroutine waits, to make sure that 'on finish' events
 		// (stopTracking and wait groups) trigger correctly
 		runningModel.Wait()

@@ -154,8 +154,9 @@ func isRunning(modelName string) bool {
 }
 
 // runningModelColumns are the table headers for the Overview's running-models
-// section. The last column holds the stop action.
-var runningModelColumns = []string{"Model", "Backend", "Version", "Uptime", "Action"}
+// section. The second-to-last column holds the "view logs" action and the
+// last column holds the stop action.
+var runningModelColumns = []string{"Model", "Backend", "Version", "Uptime", "Logs", "Action"}
 
 // runningModelsContent builds the Overview's running-models section: a table
 // with one row per running model (name, backend, version, uptime and a stop
@@ -185,11 +186,12 @@ func (this *QGUI) runningModelsContent() fyne.CanvasObject {
 		}
 	}
 
-	table.SetColumnWidth(0, 200) // Model
-	table.SetColumnWidth(1, 140) // Backend
-	table.SetColumnWidth(2, 100) // Version
-	table.SetColumnWidth(3, 100) // Uptime
-	table.SetColumnWidth(4, 110) // Action
+	table.SetColumnWidth(0, 180) // Model
+	table.SetColumnWidth(1, 120) // Backend
+	table.SetColumnWidth(2, 90)  // Version
+	table.SetColumnWidth(3, 90)  // Uptime
+	table.SetColumnWidth(4, 110) // Logs
+	table.SetColumnWidth(5, 100) // Action
 
 	empty := widget.NewLabel("No models running")
 	this.runningModelsTable = table
@@ -199,14 +201,18 @@ func (this *QGUI) runningModelsContent() fyne.CanvasObject {
 }
 
 // updateRunningModelCell fills one cell of the running-models table: a label
-// for the data columns, and the stop button in the last column.
+// for the data columns, the "view logs" button in the second-to-last column,
+// and the stop button in the last column.
 func (this *QGUI) updateRunningModelCell(m runnerDefinitions.RunningModel, id widget.TableCellID, cell *fyne.Container) {
 	cell.RemoveAll()
-	if id.Col == len(runningModelColumns)-1 {
+	switch id.Col {
+	case len(runningModelColumns) - 1: // Action: stop the model
 		cell.Add(widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
 			this.stopModel(m.ModelName())
 		}))
-	} else {
+	case len(runningModelColumns) - 2: // Logs: open the log viewer
+		cell.Add(this.viewLogsButton(m))
+	default:
 		label := widget.NewLabel(runningModelCell(m, id.Col))
 		label.Wrapping = fyne.TextWrapOff
 		cell.Add(label)

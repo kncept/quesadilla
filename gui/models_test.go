@@ -3,6 +3,7 @@ package gui
 import (
 	"os"
 	"path"
+	"sync"
 	"testing"
 	"time"
 
@@ -259,8 +260,10 @@ func TestOverviewRunningModelsSection(t *testing.T) {
 // The GUI reads its name and uptime; SendSigQuit records how often it was
 // signalled so tests can verify the stop actions.
 type fakeRunningModel struct {
+	mu    sync.Mutex
 	name  string
 	quits int
+	logs  []string
 }
 
 // ModelName implements [runnerDefinitions.RunningModel].
@@ -274,6 +277,24 @@ func (f *fakeRunningModel) RuntimeVersion() string { return "" }
 
 // Uptime implements [runnerDefinitions.RunningModel].
 func (f *fakeRunningModel) Uptime() time.Duration { return 7 * time.Minute }
+
+// Logs implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) Logs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, len(f.logs))
+	copy(out, f.logs)
+	return out
+}
+
+// addLog appends a line to the fake's captured logs. It exists so a test can
+// feed new output while the log viewer is open; the mutex keeps it safe for
+// the viewer's refresh goroutine to read concurrently.
+func (f *fakeRunningModel) addLog(line string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logs = append(f.logs, line)
+}
 
 // Wait implements [runnerDefinitions.RunningModel].
 func (f *fakeRunningModel) Wait() {}

@@ -93,16 +93,23 @@ func TestRunningModelsTableButtonTap(t *testing.T) {
 	win := test.NewWindow(page)
 	win.Resize(fyne.NewSize(900, 600))
 
+	// The row now has two buttons: View Logs and Stop. Find the Stop button
+	// specifically by its text.
 	buttons := findButtons(page, nil)
-	if len(buttons) != 1 {
-		t.Fatalf("found %d buttons in the rendered page, want 1", len(buttons))
+	if len(buttons) != 2 {
+		t.Fatalf("found %d buttons in the rendered page, want 2 (View Logs and Stop)", len(buttons))
 	}
-	button := buttons[0]
+	var button *widget.Button
+	for _, b := range buttons {
+		if b.Text == "Stop" {
+			button = b
+		}
+	}
+	if button == nil {
+		t.Fatal("expected a Stop button in the rendered page")
+	}
 	if button.Size().Width <= 0 || button.Size().Height <= 0 {
 		t.Fatalf("button has zero size: %v (never laid out)", button.Size())
-	}
-	if got := button.Text; got != "Stop" {
-		t.Fatalf("button text = %q, want %q", got, "Stop")
 	}
 
 	tapButtonCenter(t, button)
