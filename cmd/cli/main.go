@@ -140,13 +140,13 @@ func main() {
 		}
 		return
 	case "model scan":
-		scannedModels, err := qApp.Models.ScanForModels()
+		scannedModels, err := qApp.LocalModels.ScanForModels()
 		if err != nil {
 			panic(err)
 		}
 
 		installedModelsByName := make(map[string]bool)
-		availableModels := qApp.Models.Models()
+		availableModels := qApp.LocalModels.Models()
 		for _, m := range availableModels {
 			installedModelsByName[m.ModelName] = true
 		}
@@ -157,7 +157,7 @@ func main() {
 			// fmt.Printf("%+v\n", model)
 		}
 	case "model list":
-		availableModels := qApp.Models.Models()
+		availableModels := qApp.LocalModels.Models()
 		if len(availableModels) == 0 {
 			fmt.Printf("No Models Available\n")
 		} else {
@@ -168,7 +168,7 @@ func main() {
 		}
 	case "model link <link-id>":
 		installedModelsByName := make(map[string]bool)
-		availableModels := qApp.Models.Models()
+		availableModels := qApp.LocalModels.Models()
 		for _, m := range availableModels {
 			installedModelsByName[m.ModelName] = true
 		}
@@ -181,7 +181,7 @@ func main() {
 			fmt.Printf("Model already present: %s\n", modelName)
 			return
 		}
-		scanner := qApp.Models.GetScanner(scannerName)
+		scanner := qApp.LocalModels.GetScanner(scannerName)
 		if scanner == nil {
 			fmt.Printf("Scanner not found: %s\n", scannerName)
 			return
@@ -191,17 +191,17 @@ func main() {
 			fmt.Printf("No %s model %s found", scannerName, modelName)
 			return
 		}
-		err := qApp.Models.LinkScannedModel(externalModel)
+		err := qApp.LocalModels.LinkScannedModel(externalModel)
 		if err != nil {
 			panic(err)
 		}
 	case "model remove <model-name>":
-		err := qApp.Models.RemoveModel(CLI.Model.Remove.ModelName)
+		err := qApp.LocalModels.RemoveModel(CLI.Model.Remove.ModelName)
 		if err != nil {
 			log.Fatal(err)
 		}
 	case "run <model-name>":
-		m := qApp.Models.GetModel(CLI.Run.ModelName)
+		m := qApp.LocalModels.GetModel(CLI.Run.ModelName)
 		if m == nil {
 			log.Fatalf("No such model: %s", CLI.Run.ModelName)
 		}

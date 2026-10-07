@@ -1,4 +1,4 @@
-package scanner
+package remoterepository
 
 import (
 	"errors"
@@ -9,9 +9,23 @@ import (
 	"github.com/kncept/quesadilla/model/definitions"
 )
 
+// LocalAiScanner scans for models installed via localai.
+// This is considered a remote repository since it discovers models
+// from ~/.localai/models/llama-cpp/models/ rather than the local
+// quesadilla model directory.
 var _ definitions.ModelScanner = (*LocalAiScanner)(nil)
 
 type LocalAiScanner struct{}
+
+// NewLocalAiScanner creates a new LocalAiScanner for discovering remote models.
+func NewLocalAiScanner() *LocalAiScanner {
+	return &LocalAiScanner{}
+}
+
+// ScannerName implements [definitions.ModelScanner].
+func (this *LocalAiScanner) ScannerName() string {
+	return "LocalAI"
+}
 
 // GetModel implements [definitions.ModelScanner].
 func (this *LocalAiScanner) GetModel(modelName string) *definitions.RemoteModel {
@@ -63,9 +77,4 @@ func (this *LocalAiScanner) ScanForModels() ([]definitions.RemoteModel, error) {
 		}
 	}
 	return models, nil
-}
-
-// ScannerName implements [definitions.ModelScanner].
-func (this *LocalAiScanner) ScannerName() string {
-	return "LocalAI"
 }

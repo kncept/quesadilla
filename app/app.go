@@ -13,7 +13,7 @@ import (
 	backendDefinitions "github.com/kncept/quesadilla/backend/definitions"
 	"github.com/kncept/quesadilla/backend/running"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
-	"github.com/kncept/quesadilla/model/repository"
+	"github.com/kncept/quesadilla/model/localrepository"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
@@ -24,8 +24,8 @@ import (
 // [QApp.AwaitAll], so callers can launch models without blocking and later
 // wait for them all to finish.
 type QApp struct {
-	Backends *backend.Repository
-	Models   *repository.Repository
+	Backends      *backend.Repository
+	LocalModels   *localrepository.LocalRepository
 
 	registry         *running.Registry
 	allRunsWaitGroup sync.WaitGroup
@@ -35,8 +35,8 @@ type QApp struct {
 // its contents as it is created.
 func New() *QApp {
 	return &QApp{
-		Backends: backend.NewRepository(),
-		Models:   repository.NewRepository(),
+		Backends:        backend.NewRepository(),
+		LocalModels:     localrepository.NewLocalRepository(),
 		// the process-wide registry, so the GUI's running status and the
 		// tray menu see the models QApp.Start has launched
 		registry: running.Default(),

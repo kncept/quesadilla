@@ -35,11 +35,11 @@ func (this *QGUI) modelsPage() fyne.CanvasObject {
 func (this *QGUI) newModelsTable() *widget.Table {
 	table := widget.NewTable(
 		func() (int, int) {
-			return len(this.QApp.Models.Models()), len(modelColumns)
+			return len(this.QApp.LocalModels.Models()), len(modelColumns)
 		},
 		modelCellFactory,
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
-			models := this.QApp.Models.Models()
+			models := this.QApp.LocalModels.Models()
 			if id.Row < 0 || id.Row >= len(models) {
 				return
 			}
