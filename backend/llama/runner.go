@@ -33,7 +33,7 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 			"", // why do we need this to have and blank (or llama-server)??
 			"--model", m.ModelFile,
 			"--host", "localhost",
-			"--port", "8080", // 9931 --> planned defult port in the future
+			"--port", "9931", // 9931 --> planned defult port in the future
 
 			// GPU offload *everything possible*
 			"--n-gpu-layers", "999",
