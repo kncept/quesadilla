@@ -2,3 +2,4 @@
 
 llama.log
 .build/
+.DS_Store

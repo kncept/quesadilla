@@ -12,4 +12,4 @@ Implemented as a CLI interface, will upgrade to include a GUI as well (probably 
 The apps (CLI and macOS GUI) are in the 'app/' directory.
 Use `go run cmd/cli/main.go` to run the CLI client
 Use `go run cmd/macos/main.go` to run the MacOS client
-Use `./run.sh build` to build all targets into `.build/<type>/` (CLI for every supported OS/ARCH, macOS GUI for the host)
+Use `./run.sh build` to build all targets into `.build/<type>/` (CLI for every supported OS/ARCH, macOS GUI as `.build/macos/Quesadilla.app` for the host)
