@@ -30,8 +30,11 @@ var CLI struct {
 		} `cmd:"" help:"List installable versions of a backend"`
 	} `cmd:"" help:"Backend Configuration."`
 	Model struct {
-		List struct{} `cmd:""`
-		Scan struct{} `cmd:""`
+		List     struct{} `cmd:""`
+		Scanners struct{} `cmd:"" help:"list the available model scanners"`
+		Scan     struct {
+			ScannerName string `arg:"" help:"name of the scanner to run (see 'model scanners')"`
+		} `cmd:"" help:"list the models found by a scanner"`
 		Link struct {
 			LinkId string `arg:""`
 		} `cmd:""`
@@ -139,8 +142,22 @@ func main() {
 			}
 		}
 		return
-	case "model scan":
-		scannedModels, err := qApp.LocalModels.ScanForModels()
+	case "model scanners":
+		fmt.Printf("Scanners:\n")
+		for _, scanner := range qApp.RemoteModels.Scanners() {
+			fmt.Printf("%s\n", scanner.ScannerName())
+		}
+	case "model scan <scanner-name>":
+		scanner := qApp.RemoteModels.GetScanner(CLI.Model.Scan.ScannerName)
+		if scanner == nil {
+			fmt.Printf("Scanner not found: %s\n", CLI.Model.Scan.ScannerName)
+			fmt.Printf("Available scanners:\n")
+			for _, s := range qApp.RemoteModels.Scanners() {
+				fmt.Printf("  %s\n", s.ScannerName())
+			}
+			return
+		}
+		scannedModels, err := scanner.ScanForModels()
 		if err != nil {
 			panic(err)
 		}
@@ -181,7 +198,7 @@ func main() {
 			fmt.Printf("Model already present: %s\n", modelName)
 			return
 		}
-		scanner := qApp.LocalModels.GetScanner(scannerName)
+		scanner := qApp.RemoteModels.GetScanner(scannerName)
 		if scanner == nil {
 			fmt.Printf("Scanner not found: %s\n", scannerName)
 			return

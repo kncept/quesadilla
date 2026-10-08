@@ -19,6 +19,7 @@ import (
 
 	qapp "github.com/kncept/quesadilla/app"
 	"github.com/kncept/quesadilla/backend/running"
+	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/utils/qenv"
 )
 
@@ -40,6 +41,17 @@ type QGUI struct {
 	modelsTable        *widget.Table
 	runningModelsTable *widget.Table
 	noRunningLabel     *widget.Label
+
+	// The model-search screen's widgets and its last scan's results; the
+	// search runs in the background and updates them when it finishes. Nil
+	// until the main window is built.
+	searchRunning      bool
+	searchScannersList *widget.List
+	searchSpinner      *widget.ProgressBarInfinite
+	searchStatusLabel  *widget.Label
+	searchOverview     *widget.Label
+	searchResultsTable *widget.Table
+	searchResults      []modelDefinitions.RemoteModel
 }
 
 // Start launches the lightweight system-tray indicator. Blocks until quit.
@@ -246,10 +258,10 @@ func (this *QGUI) showMainWindow() {
 // and a content view taking up the rest of the window.
 func (this *QGUI) mainContent() *fyne.Container {
 	// Sidebar menu items - one per screen, per docs/GUI.md
-	sidebarItems := []string{"Overview", "Models", "Backends"}
+	sidebarItems := []string{"Overview", "Models", "Backends", "Model Search"}
 
 	// One content page per sidebar item; only the selected page is shown.
-	pages := container.NewStack(this.overviewPage(), this.modelsPage(), this.backendsPage())
+	pages := container.NewStack(this.overviewPage(), this.modelsPage(), this.backendsPage(), this.modelSearchPage())
 
 	// The list sizes itself to its template item, so use the longest item
 	// as the template to guarantee the sidebar is wide enough for all items.

@@ -134,11 +134,11 @@ func TestMainContentSidebarAndPages(t *testing.T) {
 	pages := split.Objects[0].(*fyne.Container)
 	sidebar := split.Objects[1].(*fyne.Container).Objects[0].(*widget.List)
 
-	if got := sidebar.Length(); got != 3 {
-		t.Fatalf("expected 3 sidebar items, got %d", got)
+	if got := sidebar.Length(); got != 4 {
+		t.Fatalf("expected 4 sidebar items, got %d", got)
 	}
-	if got := len(pages.Objects); got != 3 {
-		t.Fatalf("expected 3 content pages, got %d", got)
+	if got := len(pages.Objects); got != 4 {
+		t.Fatalf("expected 4 content pages, got %d", got)
 	}
 
 	// The first page is visible initially.
@@ -150,6 +150,9 @@ func TestMainContentSidebarAndPages(t *testing.T) {
 
 	sidebar.Select(2)
 	assertPageVisibility(t, pages, 2)
+
+	sidebar.Select(3)
+	assertPageVisibility(t, pages, 3)
 }
 
 func assertPageVisibility(t *testing.T, pages *fyne.Container, want int) {

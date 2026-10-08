@@ -14,29 +14,35 @@ import (
 	"github.com/kncept/quesadilla/backend/running"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/model/localrepository"
+	"github.com/kncept/quesadilla/model/remoterepository"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
 // QApp keeps references to the application's backend and model repositories.
-// Both repositories are created (and scanned) once, when QApp is created. It
-// tracks the running models in the process-wide registry (shared with the GUI
-// and the tray) and owns the wait group that back [QApp.Start] and
+// The repositories are created once, when QApp is created: the local one
+// scans for installed models as it is created, the remote one registers the
+// scanners that find models installed or hosted elsewhere. QApp also tracks
+// the running models in the process-wide registry (shared with the GUI and
+// the tray) and owns the wait group that back [QApp.Start] and
 // [QApp.AwaitAll], so callers can launch models without blocking and later
 // wait for them all to finish.
 type QApp struct {
-	Backends      *backend.Repository
-	LocalModels   *localrepository.LocalRepository
+	Backends     *backend.Repository
+	LocalModels  *localrepository.LocalRepository
+	RemoteModels *remoterepository.RemoteRepository
 
 	registry         *running.Registry
 	allRunsWaitGroup sync.WaitGroup
 }
 
-// New creates a QApp, creating both repositories. Each repository scans for
-// its contents as it is created.
+// New creates a QApp, creating both model repositories and the backend
+// repository. Each repository scans for (or registers) its contents as it is
+// created.
 func New() *QApp {
 	return &QApp{
-		Backends:        backend.NewRepository(),
-		LocalModels:     localrepository.NewLocalRepository(),
+		Backends:     backend.NewRepository(),
+		LocalModels:  localrepository.NewLocalRepository(),
+		RemoteModels: remoterepository.NewRemoteRepository(),
 		// the process-wide registry, so the GUI's running status and the
 		// tray menu see the models QApp.Start has launched
 		registry: running.Default(),
