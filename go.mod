@@ -54,4 +54,4 @@ require (
 // github.com/magomedcoder/gogguf directly:
 //   go mod edit -dropreplace=github.com/magomedcoder/gogguf
 //   go get github.com/magomedcoder/gogguf@latest
-replace github.com/magomedcoder/gogguf => github.com/nkrul/gogguf v0.0.0-20261009065445-b41f46ed143c
+replace github.com/magomedcoder/gogguf => github.com/nkrul/gogguf v0.0.0-20261009120658-d4478cfc9ab1
