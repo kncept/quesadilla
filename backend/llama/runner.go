@@ -27,18 +27,20 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	// independent writers, so their partial lines don't interleave).
 	logs := runnerDefinitions.NewLogBuffer(runnerDefinitions.DefaultMaxLogLines)
 
+	args := []string{
+		"", // why do we need this to have and blank (or llama-server)??
+		"--model", m.ModelFile,
+		"--host", "localhost",
+		"--port", "9931", // 9931 --> planned defult port in the future
+
+		// GPU offload *everything possible*
+		"--n-gpu-layers", "999",
+	}
+
 	cmd := &exec.Cmd{
 		Path: "llama-server",
-		Args: []string{
-			"", // why do we need this to have and blank (or llama-server)??
-			"--model", m.ModelFile,
-			"--host", "localhost",
-			"--port", "9931", // 9931 --> planned defult port in the future
-
-			// GPU offload *everything possible*
-			"--n-gpu-layers", "999",
-		},
-		Dir: path.Join(versionedBinDir, fmt.Sprintf("llama-%s", version)),
+		Args: args,
+		Dir:  path.Join(versionedBinDir, fmt.Sprintf("llama-%s", version)),
 	}
 	cmd.Stdout = logs.Writer()
 	cmd.Stderr = logs.Writer()
