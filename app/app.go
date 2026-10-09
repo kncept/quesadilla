@@ -69,6 +69,10 @@ func (this *QApp) Start(backend backendDefinitions.Backend, model *modelDefiniti
 			// The run lives in its own goroutine, so a failure can't be
 			// returned to the caller; report it here instead.
 			log.Printf("app: running %s failed: %v", model.ModelName, err)
+			// Bail out before tracking: a failed Start has no running
+			// model to track, and a nil in the registry would panic the
+			// callers of Names()/RunningModels().
+			return
 		}
 
 		stopTracking := this.registry.Track(runningModel)

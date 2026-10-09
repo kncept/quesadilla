@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/kncept/quesadilla/backend/definitions"
+	"github.com/kncept/quesadilla/backend/gogguf"
 	"github.com/kncept/quesadilla/backend/llama"
 )
 
@@ -28,6 +29,7 @@ func NewRepository() *Repository {
 func (this *Repository) scan() {
 	this.backends = []definitions.Backend{
 		llama.LlamaBackend(),
+		gogguf.GoggufBackend(),
 	}
 }
 

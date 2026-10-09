@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	fyne.io/fyne/v2 v2.8.1
 	github.com/alecthomas/kong v1.16.1
+	github.com/magomedcoder/gogguf v0.0.0
 	github.com/postfinance/single v0.0.2
 )
 
@@ -44,3 +45,13 @@ require (
 	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+// The gogguf backend is built on the nkrul fork's feat/asm-rewrite branch,
+// which carries the feat/arm64-darwin-support patches plus a rewrite of the
+// non-darwin arm64 NEON kernels into Go assembly syntax (all awaiting
+// upstream). Go can not pin a branch name, so this pins that branch's latest
+// commit. When the patches land upstream, drop this replace and require
+// github.com/magomedcoder/gogguf directly:
+//   go mod edit -dropreplace=github.com/magomedcoder/gogguf
+//   go get github.com/magomedcoder/gogguf@latest
+replace github.com/magomedcoder/gogguf => github.com/nkrul/gogguf v0.0.0-20261009065445-b41f46ed143c
