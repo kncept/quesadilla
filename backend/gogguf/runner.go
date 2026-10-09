@@ -3,9 +3,11 @@ package gogguf
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -31,22 +33,28 @@ func startGoggufServer(m *modelDefinitions.Model) (runnerDefinitions.RunningMode
 	// backend does for its server process. A log.Logger over the buffer's
 	// writer feeds it complete lines.
 	logs := runnerDefinitions.NewLogBuffer(runnerDefinitions.DefaultMaxLogLines)
-	logger := log.New(logs.Writer(), providerId+": ", 0)
-	logger.Printf("loading model %s (runtime %s %s)", m.ModelFile, providerId, builtInVersion)
+	// Every line is also printed to the console (os.Stdout), so the start,
+	// stop and error events are visible even when no GUI is watching the
+	// log viewer.
+	logger := log.New(io.MultiWriter(logs.Writer(), os.Stdout), providerId+": ", 0)
+	logger.Printf("starting %s (runtime %s)", m.ModelName, builtInVersion)
+	logger.Printf("loading model %s", m.ModelFile)
 
 	// LoadMapped reads the weights through an mmap (zero-copy); this is the
 	// path the darwin/arm64 patch in nkrul/gogguf enables.
 	engine, err := goggufEngine.LoadMapped(m.ModelFile, goggufEngine.LoadOptions{})
 	if err != nil {
-		logger.Printf("failed to load model: %v", err)
+		logger.Printf("error: failed to load model: %v", err)
 		return nil, fmt.Errorf("%s: loading model %s: %w", providerId, m.ModelFile, err)
 	}
+	logger.Printf("model loaded")
 
 	// Bind the listener before returning, so Start only succeeds when the
 	// server is really up.
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", servePort))
 	if err != nil {
 		engine.Close()
+		logger.Printf("error: listening on localhost:%d: %v", servePort, err)
 		return nil, fmt.Errorf("%s: listening on localhost:%d: %w", providerId, servePort, err)
 	}
 
@@ -59,7 +67,7 @@ func startGoggufServer(m *modelDefinitions.Model) (runnerDefinitions.RunningMode
 		engine:         engine,
 		server: &http.Server{
 			Addr:              fmt.Sprintf("localhost:%d", servePort),
-			Handler:           requestLogger(logs, goggufServer.New(engine, m.ModelFile).Handler()),
+			Handler:           requestLogger(logger, goggufServer.New(engine, m.ModelFile).Handler()),
 			ReadHeaderTimeout: 10 * time.Second,
 			ErrorLog:          logger,
 		},
@@ -76,13 +84,14 @@ func (g *goggufRunningModel) serve(listener net.Listener) {
 	defer close(g.done)
 	defer func() {
 		if closeErr := g.engine.Close(); closeErr != nil {
-			g.logger.Printf("closing engine: %v", closeErr)
+			g.logger.Printf("error: closing engine: %v", closeErr)
 		}
 	}()
 	g.logger.Printf("serving %s on http://%s", g.modelName, g.server.Addr)
 	if serveErr := g.server.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
-		g.logger.Printf("server error: %v", serveErr)
+		g.logger.Printf("error: server: %v", serveErr)
 	}
+	g.logger.Printf("stopped %s", g.modelName)
 }
 
 // goggufRunningModel is a RunningModel for a gogguf server running in-process
@@ -139,10 +148,11 @@ func (g *goggufRunningModel) Wait() {
 // to shut down gracefully: no new connections, in-flight requests finish.
 func (g *goggufRunningModel) SendSigQuit() {
 	g.quitOnce.Do(func() {
+		g.logger.Printf("stopping %s (graceful shutdown requested)", g.modelName)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := g.server.Shutdown(ctx); err != nil {
-			g.logger.Printf("graceful shutdown: %v", err)
+			g.logger.Printf("error: graceful shutdown: %v", err)
 		}
 	})
 }
@@ -151,18 +161,20 @@ func (g *goggufRunningModel) SendSigQuit() {
 // server immediately, including in-flight requests.
 func (g *goggufRunningModel) SendSigKill() {
 	g.killOnce.Do(func() {
+		g.logger.Printf("killing %s", g.modelName)
 		g.server.Close()
 	})
 }
 
-// requestLogger wraps a handler, logging one line per request into the
-// model's log buffer, so the log viewer shows what the server is doing.
-func requestLogger(logs *runnerDefinitions.LogBuffer, next http.Handler) http.Handler {
+// requestLogger wraps a handler, logging one line per request through the
+// model's logger (and so into both the log buffer and the console), so the
+// log viewer and the console show what the server is doing.
+func requestLogger(logger *log.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
-		logs.AddLine(fmt.Sprintf("%s %s -> %d (%s)", r.Method, r.URL.Path, recorder.status, time.Since(started).Round(time.Millisecond)))
+		logger.Printf("%s %s -> %d (%s)", r.Method, r.URL.Path, recorder.status, time.Since(started).Round(time.Millisecond))
 	})
 }
 

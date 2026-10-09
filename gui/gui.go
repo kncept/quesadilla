@@ -35,12 +35,13 @@ type QGUI struct {
 	tray    *fyne.Menu
 	mainWin fyne.Window
 
-	// The pages whose content changes over time (running status, uptime);
-	// kept up to date by the status ticker in [QGUI.Start]. Nil until the
-	// main window is built.
+	// The pages whose content changes over time (running status, uptime,
+	// the backend order); kept up to date by the status ticker in
+	// [QGUI.Start]. Nil until the main window is built.
 	modelsTable        *widget.Table
 	runningModelsTable *widget.Table
 	noRunningLabel     *widget.Label
+	backendsTable      *widget.Table
 
 	// The model-search screen's widgets and its last scan's results; the
 	// search runs in the background and updates them when it finishes. Nil

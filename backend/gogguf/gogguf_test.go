@@ -171,7 +171,7 @@ func TestRunningModelKill(t *testing.T) {
 // TestRequestLoggerCapturesLines verifies the per-request log line format.
 func TestRequestLoggerCapturesLines(t *testing.T) {
 	logs := runnerDefinitions.NewLogBuffer(runnerDefinitions.DefaultMaxLogLines)
-	handler := requestLogger(logs, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := requestLogger(log.New(logs.Writer(), providerId+": ", 0), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 

@@ -106,6 +106,7 @@ func (this *QApp) RunningModels() []runnerDefinitions.RunningModel {
 func (this *QApp) Stop(modelName string) bool {
 	for _, m := range this.registry.RunningModels() {
 		if m.ModelName() == modelName {
+			fmt.Printf("Stopping model %s on %s (quit requested)\n", modelName, m.ProviderName())
 			m.SendSigQuit()
 			return true
 		}
@@ -113,8 +114,15 @@ func (this *QApp) Stop(modelName string) bool {
 	return false
 }
 
+// StopAll asks every running model to quit, waiting up to 30 seconds for a
+// graceful stop before killing whatever is still running.
 func (this *QApp) StopAll() {
-	for _, m := range this.registry.RunningModels() {
+	runningModels := this.registry.RunningModels()
+	if len(runningModels) == 0 {
+		return
+	}
+	fmt.Printf("Stopping %d running model(s)\n", len(runningModels))
+	for _, m := range runningModels {
 		m.SendSigQuit()
 	}
 	sleepTime := 500 * time.Millisecond
@@ -126,7 +134,11 @@ func (this *QApp) StopAll() {
 	}
 
 	// yeah, just kill them now
-	for _, m := range this.registry.RunningModels() {
+	stillRunning := this.registry.RunningModels()
+	if len(stillRunning) > 0 {
+		fmt.Printf("Killing %d model(s) that did not stop in time\n", len(stillRunning))
+	}
+	for _, m := range stillRunning {
 		m.SendSigKill()
 	}
 }

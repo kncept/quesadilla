@@ -45,7 +45,9 @@ Includes an 'available' section which shows model metadata, if it's running or n
 This shows as a table, with a row per found model, listing out the details and operations
 
 ## Backends Page
-A list of Installed Backends, where each backend also shows a list of it's running models
+Backends broken out by the model types they support: one row per (model type, backend), so a backend that supports several model types appears once per type.
+The rows follow the persisted (model type, backend id) order, where the topmost backend of a model type is the default backend for that type.
+Each row has move up/down buttons to reorder the backends within their model type; the order is persisted in the config (~/.quesadilla/config.json), so it (and its default) survive a restart.
 
 # Technology
 
