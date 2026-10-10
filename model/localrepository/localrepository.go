@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/utils/qenv"
+	"github.com/kncept/quesadilla/utils/qhttp"
 )
 
 // LocalRepository maintains the application's locally-installed models.
@@ -101,6 +104,81 @@ func (this *LocalRepository) LinkScannedModel(scannedModel *definitions.RemoteMo
 	return fmt.Errorf("Unknown model type: %s", scannedModel.ModelType)
 }
 
+// DownloadModel installs a scanned model into local storage: the model file
+// is downloaded when the scanner's reference is a URL, or copied when it is
+// a local path (eg a model found by the LocalAI scanner). The file is
+// fetched to a temporary location first and moved into place only once it is
+// complete, so a failed download never leaves a partial file where a model is
+// expected (nor clobbers the model that is already installed, on a
+// re-download). The repository rescans afterwards, so the model shows up in
+// [Models].
+func (this *LocalRepository) DownloadModel(scannedModel *definitions.RemoteModel) error {
+	switch scannedModel.ModelType {
+	case "gguf":
+		modelsDir := qenv.QModelsDirectory("gguf")
+		namedModelDirectory := path.Join(modelsDir, scannedModel.ModelName)
+		if err := os.MkdirAll(namedModelDirectory, 0755); err != nil {
+			return err
+		}
+
+		filename := path.Base(scannedModel.ModelFile)
+		if filename == "." || filename == string(os.PathSeparator) {
+			filename = scannedModel.ModelName + ".gguf"
+		}
+
+		tempFile := path.Join(modelsDir, tempFileName(scannedModel.ModelName))
+		defer os.Remove(tempFile)
+		if isURL(scannedModel.ModelFile) {
+			if err := qhttp.DownloadFile(scannedModel.ModelFile, modelsDir, path.Base(tempFile)); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(scannedModel.ModelFile, tempFile); err != nil {
+				return err
+			}
+		}
+		if err := os.Rename(tempFile, path.Join(namedModelDirectory, filename)); err != nil {
+			return err
+		}
+		this.scan()
+		return nil
+	}
+
+	return fmt.Errorf("Unknown model type: %s", scannedModel.ModelType)
+}
+
+// tempFileName returns a single file name for the temporary download of the
+// named model. The model name can contain path separators (huggingface ids
+// look like "org/name"), so they are replaced to keep it to one file.
+func tempFileName(modelName string) string {
+	safe := strings.NewReplacer("/", "_", "\\", "_").Replace(modelName)
+	return "." + safe + ".download"
+}
+
+// isURL reports whether the given path is an http(s) URL rather than a local
+// filesystem path.
+func isURL(p string) bool {
+	return strings.HasPrefix(p, "http://") || strings.HasPrefix(p, "https://")
+}
+
+// copyFile copies the file at src to dst.
+func copyFile(src string, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
 func listAvailableModels() ([]definitions.Model, error) {
 	models := make([]definitions.Model, 0)
 	typedModels, err := listModelsOfType("gguf")
@@ -124,11 +202,35 @@ func listModelsOfType(modelType string) ([]definitions.Model, error) {
 		return nil, err
 	}
 	for _, dirEntry := range dirEntries {
-		modelDir := path.Join(modelsDir, dirEntry.Name())
-		filename := definitions.SingleFileContents(modelDir)
-		if filename == "model.json" {
+		if !dirEntry.IsDir() {
+			continue // stray files (eg temporary downloads) are not models
+		}
+		models, err = listModelsIn(modelsDir, dirEntry.Name(), modelType, models)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return models, nil
+}
+
+// listModelsIn lists the models stored under name (relative to modelsDir),
+// following nested directories for model names that contain a path separator
+// (huggingface ids look like "org/name" and are stored one directory per
+// name component). A model is a directory whose single entry is its file:
+// model.json for linked models, the model file otherwise.
+func listModelsIn(modelsDir, name, modelType string, models []definitions.Model) ([]definitions.Model, error) {
+	dirPath := path.Join(modelsDir, name)
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) == 1 && !entries[0].IsDir() {
+		// this directory holds the model's file
+		fileName := entries[0].Name()
+		filePath := path.Join(dirPath, fileName)
+		if fileName == "model.json" {
 			remoteModel := definitions.RemoteModel{}
-			data, err := os.ReadFile(path.Join(modelDir, filename))
+			data, err := os.ReadFile(filePath)
 			if err != nil {
 				return nil, err
 			}
@@ -137,12 +239,25 @@ func listModelsOfType(modelType string) ([]definitions.Model, error) {
 				return nil, err
 			}
 			models = append(models, remoteModel.Model)
-		} else if filename != "" {
+		} else {
 			models = append(models, definitions.Model{
-				ModelName: dirEntry.Name(),
+				ModelName: name,
 				ModelType: modelType,
-				ModelFile: path.Join(modelDir, filename),
+				ModelFile: filePath,
 			})
+		}
+		return models, nil
+	}
+
+	// not a model directory: its subdirectories may be (one name component
+	// can hold several models)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		models, err = listModelsIn(modelsDir, path.Join(name, entry.Name()), modelType, models)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return models, nil

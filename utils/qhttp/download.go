@@ -1,6 +1,7 @@
 package qhttp
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -19,6 +20,10 @@ func DownloadFile(url string, destinationDirectory string, filename string) erro
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status %d downloading %s", resp.StatusCode, url)
+	}
 
 	err = os.MkdirAll(destinationDirectory, 0755)
 	if err != nil {

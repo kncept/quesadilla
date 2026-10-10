@@ -47,6 +47,7 @@ type QGUI struct {
 	// search runs in the background and updates them when it finishes. Nil
 	// until the main window is built.
 	searchRunning      bool
+	downloadsInFlight  int
 	searchScannersList *widget.List
 	searchSpinner      *widget.ProgressBarInfinite
 	searchStatusLabel  *widget.Label

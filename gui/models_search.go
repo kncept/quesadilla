@@ -5,14 +5,15 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 )
 
 // modelSearchColumns are the table headers shown for the model search
-// results.
-var modelSearchColumns = []string{"Name", "Type", "File"}
+// results. The first column holds each model's download button.
+var modelSearchColumns = []string{"Download", "Name", "Type", "File"}
 
 // modelSearchOverviewText is what the search screen's overview explains:
 // that the screen is for finding models to install.
@@ -104,22 +105,19 @@ func (this *QGUI) modelSearchPage() fyne.CanvasObject {
 	return content
 }
 
-// newSearchResultsTable builds the table of the last scan's results.
+// newSearchResultsTable builds the table of the last scan's results: a
+// download button in the first column, then the model's name, type and file.
 func newSearchResultsTable(g *QGUI) *widget.Table {
 	table := widget.NewTable(
 		func() (int, int) {
 			return len(g.searchResults), len(modelSearchColumns)
 		},
-		func() fyne.CanvasObject {
-			label := widget.NewLabel("")
-			label.Wrapping = fyne.TextWrapOff
-			return label
-		},
+		searchResultsCellFactory,
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
 			if id.Row < 0 || id.Row >= len(g.searchResults) {
 				return
 			}
-			cell.(*widget.Label).SetText(searchResultCell(g.searchResults[id.Row], id.Col))
+			g.updateSearchResultCell(g.searchResults[id.Row], id, cell.(*fyne.Container))
 		},
 	)
 
@@ -133,22 +131,61 @@ func newSearchResultsTable(g *QGUI) *widget.Table {
 		}
 	}
 
-	table.SetColumnWidth(0, 240) // Name
-	table.SetColumnWidth(1, 80)  // Type
-	table.SetColumnWidth(2, 380) // File
+	table.SetColumnWidth(0, 150) // Download
+	table.SetColumnWidth(1, 210) // Name
+	table.SetColumnWidth(2, 80)  // Type
+	table.SetColumnWidth(3, 320) // File
 
 	return table
 }
 
+// searchResultsCellFactory builds a cell of the search-results table. The
+// cell needs a real layout: a bare &fyne.Container{} never lays out its
+// children, which leaves them at 0x0 - invisible and untappable. It also
+// needs a minimum size that fits the download button, because the table sizes
+// its rows from the template cell's minimum size; the seeded button is only
+// measured and never rendered (updateSearchResultCell replaces the contents).
+func searchResultsCellFactory() fyne.CanvasObject {
+	return container.NewVBox(widget.NewButtonWithIcon("Download", theme.DownloadIcon(), nil))
+}
+
+// updateSearchResultCell fills one cell of the search-results table: the
+// download button in the first column, and a label for the data columns.
+func (this *QGUI) updateSearchResultCell(m modelDefinitions.RemoteModel, id widget.TableCellID, cell *fyne.Container) {
+	cell.RemoveAll()
+	if id.Col == 0 {
+		cell.Add(this.modelDownloadButton(m))
+	} else {
+		label := widget.NewLabel(searchResultCell(m, id.Col))
+		label.Wrapping = fyne.TextWrapOff
+		cell.Add(label)
+	}
+	cell.Refresh()
+}
+
+// modelDownloadButton builds the download button for a search result's row:
+// "Download" when the model is not installed locally yet, and "Redownload"
+// when it already is (matched by name).
+func (this *QGUI) modelDownloadButton(m modelDefinitions.RemoteModel) *widget.Button {
+	if this.QApp.LocalModels.GetModel(m.ModelName) != nil {
+		return widget.NewButtonWithIcon("Redownload", theme.ViewRefreshIcon(), func() {
+			this.downloadModel(m)
+		})
+	}
+	return widget.NewButtonWithIcon("Download", theme.DownloadIcon(), func() {
+		this.downloadModel(m)
+	})
+}
+
 // searchResultCell returns the display value for one data cell of the
-// search-results table.
+// search-results table. Column 0 holds the download button, not a label.
 func searchResultCell(m modelDefinitions.RemoteModel, col int) string {
 	switch col {
-	case 0:
-		return m.ModelName
 	case 1:
-		return m.ModelType
+		return m.ModelName
 	case 2:
+		return m.ModelType
+	case 3:
 		return m.ModelFile
 	default:
 		return ""
@@ -176,6 +213,12 @@ func (this *QGUI) runModelSearch(scanner modelDefinitions.ModelScanner) {
 
 	go func() {
 		models, err := scanner.ScanForModels()
+		// the screen is the source of truth for where its results came from,
+		// so stamp the scanner name on every result; the download action
+		// looks the scanner back up by that name
+		for i := range models {
+			models[i].ScannerName = scanner.ScannerName()
+		}
 		fyne.Do(func() {
 			this.finishModelSearch(models, err)
 		})
@@ -187,7 +230,11 @@ func (this *QGUI) runModelSearch(scanner modelDefinitions.ModelScanner) {
 // results area. Last it clears the scanner selection and marks the search as
 // finished, so the same scanner can be picked again to re-run a scan.
 func (this *QGUI) finishModelSearch(models []modelDefinitions.RemoteModel, err error) {
-	this.searchSpinner.Hide()
+	// the search and the downloads share the spinner, so only hide it when
+	// no download is still in progress
+	if this.downloadsInFlight == 0 {
+		this.searchSpinner.Hide()
+	}
 
 	if err != nil {
 		this.searchResults = nil
@@ -212,4 +259,57 @@ func (this *QGUI) finishModelSearch(models []modelDefinitions.RemoteModel, err e
 	// lastly release the scanner selection and mark the search finished
 	this.searchScannersList.UnselectAll()
 	this.searchRunning = false
+}
+
+// downloadModel downloads (or copies, for local sources) the named scanned
+// model into local storage. The work runs in the background, with the spinner
+// and the status label showing progress; when it finishes the search-results
+// table and the installed-models table are refreshed, so the button reads
+// "Redownload" and the model shows up on the Models screen.
+func (this *QGUI) downloadModel(m modelDefinitions.RemoteModel) {
+	this.downloadsInFlight++
+	this.searchSpinner.Show()
+	this.searchStatusLabel.Show()
+	this.searchStatusLabel.SetText(fmt.Sprintf("Downloading %s...", m.ModelName))
+
+	go func() {
+		var err error
+		scanner := this.QApp.RemoteModels.GetScanner(m.ScannerName)
+		if scanner == nil {
+			err = fmt.Errorf("scanner %s is not available", m.ScannerName)
+		} else {
+			remote := scanner.GetModel(m.ModelName)
+			if remote == nil {
+				err = fmt.Errorf("%s model %s not found", m.ScannerName, m.ModelName)
+			} else {
+				err = this.QApp.LocalModels.DownloadModel(remote)
+			}
+		}
+		fyne.Do(func() {
+			this.finishModelDownload(m.ModelName, err)
+		})
+	}()
+}
+
+// finishModelDownload applies the outcome of a model download to the screen:
+// the status label, and a refresh of the search-results table (so the button
+// reads "Redownload" once the model is installed) and of the installed-models
+// table (so the model appears on the Models screen).
+func (this *QGUI) finishModelDownload(modelName string, err error) {
+	if this.downloadsInFlight > 0 {
+		this.downloadsInFlight--
+	}
+	if this.downloadsInFlight == 0 {
+		this.searchSpinner.Hide()
+	}
+	if err != nil {
+		this.searchStatusLabel.SetText(fmt.Sprintf("Download failed: %v", err))
+		this.notifyError(fmt.Sprintf("downloading %s: %v", modelName, err))
+	} else {
+		this.searchStatusLabel.SetText(fmt.Sprintf("Downloaded %s", modelName))
+	}
+	this.searchResultsTable.Refresh()
+	if this.modelsTable != nil {
+		this.modelsTable.Refresh()
+	}
 }

@@ -20,8 +20,8 @@ func TestBackendIdentity(t *testing.T) {
 	if b.Description() == "" {
 		t.Error("Description() empty")
 	}
-	if got := b.ModelTypes(); len(got) != 1 || got[0] != "gguf" {
-		t.Errorf("ModelTypes() = %v, want [gguf]", got)
+	if got := b.ModelTypes(); len(got) != 1 || got[0] != "hf" {
+		t.Errorf("ModelTypes() = %v, want [hf]", got)
 	}
 }
 
