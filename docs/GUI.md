@@ -10,6 +10,8 @@ The second is a full control suite app.
 
 - Allows launching the main control suite app
 - has a 'no models running', or a 'models running' and a list of running models.
+  Selecting a running model's name opens that model's log viewer (or focuses it,
+  when it is already open).
 
 # Control Suite
 
@@ -27,10 +29,15 @@ Has a 'stop model' button that will top the model
 Has a 'view logs' button that opens the log viewer for that model
 
 ## Log Viewer
-A simple, drill-in window opened from a running model's 'view logs' button.
+A simple, drill-in window opened from a running model's 'view logs' button, or
+from the model's name under 'Models running:' in the tray. Each running model
+has at most one log window: opening the logs again brings the existing window
+to the front instead of opening a second one.
 It shows the model's recent captured log lines (kept in memory, up to a
 configurable maximum per model, default 200 lines) in a scrollable area, and
 keeps updating while the model is still running.
+Has a 'follow' checkbox (starts checked) that keeps the view pinned to the
+newest lines, plus a 'refresh' button to reload on demand
 Has a 'back' button at the bottom that closes the window
 
 ## Models Page
@@ -55,8 +62,16 @@ Each row has move up/down buttons to reorder the backends within their model typ
 ## Model Search Page
 Find models to install from several sources. The scanners are listed on the left;
 selecting one runs its search and lists the results in a table on the right.
+Each result row lists the model's **Name** and **Type**, then its action buttons
+(between the type and the file, so the buttons sit next to the details they act
+on), then the **File** they act on.
 
-- **HuggingFace** lists popular GGUF models from the HuggingFace hub.
+- **HuggingFace** lists popular GGUF models from the HuggingFace hub, and shows
+  a search box above the results: submitting a query (or pressing Enter) runs a
+  hub search for matching GGUF models, while an empty query lists the popular
+  ones again. A repository holding several GGUF files is listed as one row per
+  file, so a specific quantization can be downloaded; the model's name and type
+  are shown only on the group's first row, so the group reads as one model.
 - **LocalAI** lists models installed by localai.
 - **Filesystem** searches a directory of your choosing for `.gguf` files. It
   shows a small form: the directory to search, a numeric `Depth` (how many
@@ -67,11 +82,12 @@ selecting one runs its search and lists the results in a table on the right.
   directory holding at least one `.gguf` file is listed as one model, named by
   its path relative to the search root, with each `.gguf` file as a variant.
 
-Results carry action buttons in the first column:
+Results carry action buttons in the action column:
 
 - **HuggingFace** models have the usual **Download** (or **Redownload**)
   button, plus an **Open** button to its right that opens the model's card in
-  the system browser.
+  the system browser. When a model's files each get their own row, the download
+  button fetches just that row's file.
 - **LocalAI** models follow their link/install state: a model that is not
   installed locally shows **Link** (point at the localai files, copying
   nothing) and **Install** (copy the files into quesadilla's data directory);

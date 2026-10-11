@@ -168,7 +168,7 @@ func TestShowLogsWindowBackButtonCloses(t *testing.T) {
 }
 
 // TestShowLogsWindowControls verifies the log window's bottom bar carries a
-// Refresh button (next to Back) and a Follow checkbox, starting unchecked.
+// Refresh button (next to Back) and a Follow checkbox, starting checked.
 func TestShowLogsWindowControls(t *testing.T) {
 	test.NewApp()
 	qApp := newTestQApp(t)
@@ -202,8 +202,8 @@ func TestShowLogsWindowControls(t *testing.T) {
 	if len(checks) != 1 || checks[0].Text != "Follow" {
 		t.Fatalf("expected a single Follow checkbox in the log window, found %d checks", len(checks))
 	}
-	if checks[0].Checked {
-		t.Fatal("Follow should start unchecked")
+	if !checks[0].Checked {
+		t.Fatal("Follow should start checked")
 	}
 }
 
@@ -268,13 +268,15 @@ func TestShowLogsFollowAutoUpdates(t *testing.T) {
 	// goroutine stays out of the way: the test drives v.tick directly, the
 	// exact code path the ticker invokes on every logTick.
 	withLogTick(t, time.Hour, func() {
-		content, v := newLogViewer(fake, win)
+		content, v := newLogViewer(fake, win, nil)
 		win.SetContent(content)
 		win.Resize(fyne.NewSize(800, 500))
 		win.Show()
 
-		// a real tap inside the checkbox's active area (Check.Tapped
-		// dereferences the event, so it cannot be nil like a Button tap)
+		// Follow starts on; turn it off and tap it back on, which
+		// exercises the checkbox's real tap path (Check.Tapped dereferences
+		// the event, so it cannot be nil like a Button tap)
+		v.follow.SetChecked(false)
 		v.follow.Tapped(&fyne.PointEvent{Position: fyne.NewPos(10, 5)})
 		if !v.follow.Checked {
 			t.Fatal("tapping the Follow checkbox should check it")
@@ -293,6 +295,87 @@ func TestShowLogsFollowAutoUpdates(t *testing.T) {
 	})
 }
 
+// TestShowLogsReusesWindow verifies each running model has at most one log
+// window: showing the logs again focuses the open window rather than opening
+// a second, and closing it allows a fresh one.
+func TestShowLogsReusesWindow(t *testing.T) {
+	test.NewApp()
+	qApp := newTestQApp(t)
+	g := CreateGui(nil, qApp)
+	g.app = test.NewApp()
+
+	fake := &fakeRunningModel{name: "tiny-llama", logs: []string{"line"}}
+
+	first := g.showLogs(fake)
+	if first == nil {
+		t.Fatal("expected a log window to be created")
+	}
+	second := g.showLogs(fake)
+	if second != first {
+		t.Fatal("expected the second showLogs to reuse the open window")
+	}
+	if got := len(g.logWindows); got != 1 {
+		t.Fatalf("tracked log windows = %d, want 1", got)
+	}
+
+	// closing the window forgets it, so the next open creates a fresh one
+	first.Close()
+	if g.logWindows["tiny-llama"] != nil {
+		t.Fatal("expected the closed log window to be forgotten")
+	}
+	third := g.showLogs(fake)
+	if third == nil {
+		t.Fatal("expected a new log window after the previous one closed")
+	}
+	if third == first {
+		t.Fatal("expected a fresh window, got the closed one")
+	}
+}
+
+// TestTrayMenuModelOpensLogs verifies the model name under "Models running:"
+// opens that model's log window, and that activating it again focuses the same
+// window rather than opening a second one.
+func TestTrayMenuModelOpensLogs(t *testing.T) {
+	g := newTrayGui(t)
+	g.app = test.NewApp()
+
+	fake := &fakeRunningModel{name: "tiny-llama", logs: []string{"line"}}
+	stop := running.Default().Track(fake)
+	defer stop()
+	g.refreshTrayMenu()
+
+	var item *fyne.MenuItem
+	for _, candidate := range g.tray.Items {
+		if candidate.Label == "  tiny-llama" {
+			item = candidate
+		}
+	}
+	if item == nil {
+		t.Fatal("expected a tray item for the running model")
+	}
+	if item.Disabled || item.Action == nil {
+		t.Fatal("expected the tray model item to be actionable")
+	}
+
+	item.Action()
+	win := g.logWindows["tiny-llama"]
+	if win == nil {
+		t.Fatal("expected the tray model item to open a log window")
+	}
+	if got := win.Title(); got != "Logs - tiny-llama" {
+		t.Fatalf("window title = %q, want Logs - tiny-llama", got)
+	}
+
+	// activating the item again focuses the same window
+	item.Action()
+	if got := g.logWindows["tiny-llama"]; got != win {
+		t.Fatal("expected the second activation to reuse the log window")
+	}
+	if got := len(g.logWindows); got != 1 {
+		t.Fatalf("tracked log windows = %d, want 1", got)
+	}
+}
+
 // TestShowLogsNoAutoUpdateWithoutFollow verifies that with the Follow
 // checkbox off, the viewer does not reload the log lines on its own (the
 // Refresh button is the manual path).
@@ -309,6 +392,13 @@ func TestShowLogsNoAutoUpdateWithoutFollow(t *testing.T) {
 		if win == nil {
 			t.Fatal("expected a log window to be created")
 		}
+
+		// Follow starts on; turn it off so the viewer should stop updating
+		checks := findChecks(win.Content(), nil)
+		if len(checks) != 1 {
+			t.Fatalf("expected a Follow checkbox, found %d", len(checks))
+		}
+		checks[0].SetChecked(false)
 
 		fake.addLog("beta")
 

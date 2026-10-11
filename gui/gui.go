@@ -41,6 +41,11 @@ type QGUI struct {
 	tray    *fyne.Menu
 	mainWin fyne.Window
 
+	// logWindows holds the open log window for each running model, keyed by
+	// model name, so opening a model's logs again focuses the existing window
+	// instead of stacking up duplicates. Guarded by mu.
+	logWindows map[string]fyne.Window
+
 	// The pages whose content changes over time (running status, uptime,
 	// the backend order); kept up to date by the status ticker in
 	// [QGUI.Start]. Nil until the main window is built.
@@ -52,7 +57,8 @@ type QGUI struct {
 	// The model-search screen's widgets and its last scan's results; the
 	// search runs in the background and updates them when it finishes. Nil
 	// until the main window is built. The filesystem scanner's configuration
-	// form holds the chosen directory and depth.
+	// form holds the chosen directory and depth, and the HuggingFace search
+	// box holds the query for a scanner that supports searching.
 	searchRunning          bool
 	downloadsInFlight      int
 	searchScannersList     *widget.List
@@ -62,12 +68,17 @@ type QGUI struct {
 	searchResultsTable     *widget.Table
 	searchResultsStack     *fyne.Container
 	searchResults          []modelDefinitions.RemoteModel
+	searchResultRows       []searchResultRow
 	searchFilesystemForm   *fyne.Container
 	searchDirectoryEntry   *widget.Entry
 	searchDepthEntry       *widget.Entry
 	searchUnlimitedCheck   *widget.Check
 	searchFilesystemButton *widget.Button
 	searchDepthLast        string
+	searchQueryScanner     modelDefinitions.ModelScanner
+	searchQueryBar         *fyne.Container
+	searchQueryEntry       *widget.Entry
+	searchQueryButton      *widget.Button
 }
 
 // Start launches the lightweight system-tray indicator. Blocks until quit.
@@ -198,7 +209,12 @@ func (this *QGUI) refreshTrayMenu() {
 	} else {
 		items = append(items, disabledItem("Models running:"))
 		for _, name := range models {
-			items = append(items, disabledItem("  "+name))
+			// the model name opens (or focuses) that model's log window
+			items = append(items, fyne.NewMenuItem("  "+name, func() {
+				if m := runningModelFor(name); m != nil {
+					this.showLogs(m)
+				}
+			}))
 		}
 	}
 

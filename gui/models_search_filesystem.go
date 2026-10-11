@@ -124,6 +124,9 @@ func (this *QGUI) showFilesystemSearchForm() {
 	this.searchFilesystemForm.Show()
 	this.searchStatusLabel.Hide()
 	this.searchSpinner.Hide()
+	// the filesystem scanner has no search box
+	this.searchQueryScanner = nil
+	this.setSearchQueryBarVisible(false)
 }
 
 // runFilesystemSearch configures the filesystem scanner with the form's

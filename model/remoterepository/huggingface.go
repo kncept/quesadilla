@@ -13,7 +13,14 @@ import (
 	"github.com/kncept/quesadilla/model/definitions"
 )
 
-var _ definitions.ModelScanner = (*HuggingFaceScanner)(nil)
+var (
+	_ definitions.ModelScanner      = (*HuggingFaceScanner)(nil)
+	_ definitions.QueryModelScanner = (*HuggingFaceScanner)(nil)
+)
+
+// HuggingFaceScannerName is the name the HuggingFace scanner registers under
+// and stamps on the models it finds.
+const HuggingFaceScannerName = "HuggingFace"
 
 // hfBaseURL is the root of the HuggingFace API. It is a variable rather than
 // a constant so tests can point the scanner at a local test server.
@@ -75,7 +82,7 @@ func NewHuggingFaceScanner() *HuggingFaceScanner {
 
 // ScannerName implements [definitions.ModelScanner].
 func (this *HuggingFaceScanner) ScannerName() string {
-	return "HuggingFace"
+	return HuggingFaceScannerName
 }
 
 // GetModel implements [definitions.ModelScanner]. It verifies that a model
@@ -112,6 +119,35 @@ func (this *HuggingFaceScanner) ScanForModels() ([]definitions.RemoteModel, erro
 			if remote := this.toRemoteModel(m); remote != nil {
 				models = append(models, *remote)
 			}
+		}
+	}
+	return models, nil
+}
+
+// ScanForQuery implements [definitions.QueryModelScanner]. It runs a single
+// hub search for the query (limited to GGUF models) and lists what it finds,
+// trimming models without a runnable GGUF file. An empty query falls back to
+// the scanner's default listing.
+func (this *HuggingFaceScanner) ScanForQuery(query string) ([]definitions.RemoteModel, error) {
+	if strings.TrimSpace(query) == "" {
+		return this.ScanForModels()
+	}
+
+	list, err := this.listModels(url.Values{
+		"filter":    {"gguf"},
+		"search":    {query},
+		"sort":      {"downloads"},
+		"direction": {"-1"},
+		"limit":     {"30"},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	models := make([]definitions.RemoteModel, 0, len(list))
+	for _, m := range list {
+		if remote := this.toRemoteModel(m); remote != nil {
+			models = append(models, *remote)
 		}
 	}
 	return models, nil

@@ -3,6 +3,7 @@ package remoterepository
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -22,7 +23,13 @@ func hfTestServer(t *testing.T, requests *[]string) *httptest.Server {
 		case r.URL.Path == "/api/models":
 			filter := r.URL.Query().Get("filter")
 			sort := r.URL.Query().Get("sort")
+			search := r.URL.Query().Get("search")
 			switch {
+			case search != "":
+				w.Write([]byte(`[
+					{"id":"acme/Searched","downloads":1,"tags":["gguf"],"license":"mit"},
+					{"id":"acme/Plain","downloads":9,"tags":["transformers"]}
+				]`))
 			case filter == "text-generation":
 				w.Write([]byte(`[
 					{"id":"acme/Texty","downloads":5,"tags":["gguf","text-generation"],"pipeline_tag":"text-generation","license":"mit"},
@@ -64,6 +71,13 @@ func hfTestServer(t *testing.T, requests *[]string) *httptest.Server {
 				{"type":"file","path":"LICENSE","size":20},
 				{"type":"file","path":"Ggufy-Q4.gguf","size":100},
 				{"type":"file","path":"Ggufy-Q8.gguf","size":200}
+			]`))
+		case r.URL.Path == "/api/models/acme/Searched":
+			w.Write([]byte(`{"id":"acme/Searched","downloads":1,"tags":["gguf"],"license":"mit"}`))
+		case r.URL.Path == "/api/models/acme/Searched/tree/main":
+			w.Write([]byte(`[
+				{"type":"file","path":"LICENSE","size":20},
+				{"type":"file","path":"Searched-Q4.gguf","size":100}
 			]`))
 		case r.URL.Path == "/api/models/acme/Liked":
 			w.Write([]byte(`{"id":"acme/Liked","likes":3,"tags":["gguf"]}`))
@@ -163,6 +177,56 @@ func TestHuggingFaceScanForModelsError(t *testing.T) {
 
 	if _, err := NewHuggingFaceScanner().ScanForModels(); err == nil {
 		t.Error("expected an error when the hub query fails")
+	}
+}
+
+// TestHuggingFaceScanForQuery verifies a query runs a single hub search
+// (limited to GGUF files), lists what it finds, and trims models without a
+// runnable GGUF file.
+func TestHuggingFaceScanForQuery(t *testing.T) {
+	requests := &[]string{}
+	server := hfTestServer(t, requests)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	models, err := NewHuggingFaceScanner().ScanForQuery("llama")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].FullModelName() != "acme/Searched" {
+		t.Fatalf("models = %+v, want just acme/Searched", models)
+	}
+	if models[0].ModelSource != HuggingFaceScannerName {
+		t.Errorf("source = %q, want %q", models[0].ModelSource, HuggingFaceScannerName)
+	}
+
+	var searched bool
+	for _, request := range *requests {
+		if strings.Contains(request, "search=llama") {
+			searched = true
+			if !strings.Contains(request, "filter=gguf") {
+				t.Errorf("search request %q is not limited to gguf", request)
+			}
+		}
+	}
+	if !searched {
+		t.Errorf("requests = %v, want a search for llama", *requests)
+	}
+}
+
+// TestHuggingFaceScanForQueryEmpty verifies an empty (or blank) query falls
+// back to the scanner's default listing.
+func TestHuggingFaceScanForQueryEmpty(t *testing.T) {
+	server := hfTestServer(t, nil)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	models, err := NewHuggingFaceScanner().ScanForQuery("   ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 3 {
+		t.Errorf("scanned %d models, want the default listing's 3", len(models))
 	}
 }
 

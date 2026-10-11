@@ -152,10 +152,10 @@ func TestModelSearchFilesystemRunSearch(t *testing.T) {
 	if !g.searchResultsTable.Visible() {
 		t.Fatal("expected the results table to be visible after the search")
 	}
-	if got := tableCellText(g.searchResultsTable, 0, 1); got != "tiny" {
+	if got := tableCellText(g.searchResultsTable, 0, searchResultNameColumn); got != "tiny" {
 		t.Errorf("result name = %q, want tiny", got)
 	}
-	buttons := tableCellButtons(g.searchResultsTable, 0, 0)
+	buttons := tableCellButtons(g.searchResultsTable, 0, searchResultActionColumn)
 	if findButtonByText(buttons, "Import") == nil {
 		t.Error("expected an Import button on the filesystem result row")
 	}
@@ -312,7 +312,7 @@ func TestModelSearchDownloadButtonOpensModelCard(t *testing.T) {
 
 	// row 0 has ModelURL: its actions are Download then Open; row 1 has no
 	// ModelURL, so only Download.
-	buttons := tableCellButtons(g.searchResultsTable, 0, 0)
+	buttons := tableCellButtons(g.searchResultsTable, 0, searchResultActionColumn)
 	if len(buttons) != 2 {
 		t.Fatalf("row 0 buttons = %d, want 2 (Download and Open)", len(buttons))
 	}
@@ -322,7 +322,7 @@ func TestModelSearchDownloadButtonOpensModelCard(t *testing.T) {
 	if buttons[1].Text != "Open" {
 		t.Errorf("row 0 second button = %q, want Open", buttons[1].Text)
 	}
-	row1 := tableCellButtons(g.searchResultsTable, 1, 0)
+	row1 := tableCellButtons(g.searchResultsTable, 1, searchResultActionColumn)
 	if len(row1) != 1 || row1[0].Text != "Download" {
 		t.Errorf("row 1 buttons = %v, want a single Download", row1)
 	}

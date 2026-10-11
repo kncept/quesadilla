@@ -102,6 +102,16 @@ type ModelScanner interface {
 	GetModel(modelName string) *RemoteModel
 }
 
+// QueryModelScanner is a ModelScanner whose scan can also be driven by a
+// user-supplied query (eg the search box on the Model Search screen), rather
+// than only its built-in default listing. An empty query behaves like
+// [ModelScanner.ScanForModels].
+type QueryModelScanner interface {
+	ModelScanner
+
+	ScanForQuery(query string) ([]RemoteModel, error)
+}
+
 // FullModelName joins a model's family and name for display and lookup:
 // "family/name", or just the name when the family is unknown.
 func FullModelName(family, name string) string {
