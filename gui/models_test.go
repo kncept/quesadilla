@@ -3,6 +3,7 @@ package gui
 import (
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -48,10 +49,11 @@ func TestModelCell(t *testing.T) {
 		col  int
 		want string
 	}{
-		{0, "tiny-llama"},
-		{1, "gguf"},
-		{2, "idle"}, // not running
-		{3, "/models/gguf/tiny-llama/tiny-llama.gguf"},
+		{0, ""}, // the actions column, not a label
+		{1, "tiny-llama"},
+		{2, "gguf"},
+		{3, "idle"}, // not running
+		{4, "/models/gguf/tiny-llama/tiny-llama.gguf"},
 	}
 	for _, c := range cases {
 		if got := modelCell(m, c.col); got != c.want {
@@ -82,12 +84,36 @@ func TestModelsTableListsRepository(t *testing.T) {
 	// The name column is populated from the repository.
 	names := map[string]bool{}
 	for i := 0; i < rows; i++ {
-		names[tableCellText(table, i, 0)] = true
+		names[tableCellText(table, i, 1)] = true
 	}
 	for _, want := range []string{"tiny-llama", "big-llama"} {
 		if !names[want] {
 			t.Errorf("table missing model %q (got %v)", want, names)
 		}
+	}
+}
+
+// TestModelsTableActionsFirst verifies the row actions live in the leftmost
+// column: the start/stop, delete and logs buttons are all in column 0.
+func TestModelsTableActionsFirst(t *testing.T) {
+	test.NewApp()
+	qApp := newTestQApp(t, "tiny-llama")
+	g := CreateGui(nil, qApp)
+	table := g.newModelsTable()
+
+	if got := modelColumns[0]; got != "Actions" {
+		t.Fatalf("first column = %q, want %q", got, "Actions")
+	}
+
+	buttons := tableCellButtons(table, 0, 0)
+	if findButtonByText(buttons, "Start") == nil {
+		t.Error("expected a start/stop button in the first column")
+	}
+	if findButtonByIconName(buttons, "delete") == nil {
+		t.Error("expected a delete button in the first column")
+	}
+	if findButtonByText(buttons, "Logs") == nil {
+		t.Error("expected a logs button in the first column")
 	}
 }
 
@@ -100,19 +126,21 @@ func TestModelsTableRunningColumn(t *testing.T) {
 	g := CreateGui(nil, qApp)
 	table := g.newModelsTable()
 
-	if got := tableCellText(table, 0, 2); got != "idle" {
+	statusCol := 3
+
+	if got := tableCellText(table, 0, statusCol); got != "idle" {
 		t.Errorf("running column = %q, want %q", got, "idle")
 	}
 
 	stop := running.Default().Track(&fakeRunningModel{name: "tiny-llama"})
 	defer stop()
 
-	if got := tableCellText(table, 0, 2); got != "running" {
+	if got := tableCellText(table, 0, statusCol); got != "running" {
 		t.Errorf("running column = %q, want %q", got, "running")
 	}
 }
 
-// TestModelsTableActionButton verifies the action column shows a Start button
+// TestModelsTableActionButton verifies the actions column shows a Start button
 // for models that are not running, a Stop button for models that are, and
 // that tapping Stop asks the running model to quit.
 func TestModelsTableActionButton(t *testing.T) {
@@ -121,15 +149,12 @@ func TestModelsTableActionButton(t *testing.T) {
 	g := CreateGui(nil, qApp)
 	table := g.newModelsTable()
 
-	actionCol := len(modelColumns) - 1
+	actionCol := 0
 
 	// not running: a Start button
-	button := tableCellButton(table, 0, actionCol)
+	button := findButtonByText(tableCellButtons(table, 0, actionCol), "Start")
 	if button == nil {
-		t.Fatal("expected a button in the action column")
-	}
-	if got := button.Text; got != "Start" {
-		t.Errorf("action button = %q, want %q", got, "Start")
+		t.Fatal("expected a Start button in the actions column")
 	}
 
 	// running: a Stop button that signals the model
@@ -137,12 +162,9 @@ func TestModelsTableActionButton(t *testing.T) {
 	stop := running.Default().Track(fake)
 	defer stop()
 
-	button = tableCellButton(table, 0, actionCol)
+	button = findButtonByText(tableCellButtons(table, 0, actionCol), "Stop")
 	if button == nil {
-		t.Fatal("expected a button in the action column")
-	}
-	if got := button.Text; got != "Stop" {
-		t.Errorf("action button = %q, want %q", got, "Stop")
+		t.Fatal("expected a Stop button in the actions column")
 	}
 
 	button.Tapped(nil)
@@ -160,18 +182,127 @@ func TestModelsTableStartButtonWithoutBackend(t *testing.T) {
 	g := CreateGui(nil, qApp)
 	table := g.newModelsTable()
 
-	button := tableCellButton(table, 0, len(modelColumns)-1)
+	button := findButtonByText(tableCellButtons(table, 0, 0), "Start")
 	if button == nil {
-		t.Fatal("expected a button in the action column")
-	}
-	if got := button.Text; got != "Start" {
-		t.Fatalf("action button = %q, want %q", got, "Start")
+		t.Fatal("expected a Start button in the actions column")
 	}
 
 	// must not panic, and must not have started anything
 	button.Tapped(nil)
 	if got := g.QApp.RunningModels(); len(got) != 0 {
 		t.Errorf("running models = %v, want none", got)
+	}
+}
+
+// TestModelsTableDeleteButtonConfirms verifies the actions column carries a
+// delete button that is not a danger (bright red) button, and that it does not
+// remove the model until the user accepts a confirmation dialog.
+func TestModelsTableDeleteButtonConfirms(t *testing.T) {
+	test.NewApp()
+	qApp := newTestQApp(t, "tiny-llama")
+	g := CreateGui(nil, qApp)
+	table := g.newModelsTable()
+
+	win := test.NewWindow(table)
+	win.Resize(fyne.NewSize(900, 600))
+	defer win.Close()
+
+	g.mu.Lock()
+	g.mainWin = win
+	g.mu.Unlock()
+
+	del := findButtonByIconName(tableCellButtons(table, 0, 0), "delete")
+	if del == nil {
+		t.Fatal("expected a delete button in the actions column")
+	}
+	if del.Importance == widget.DangerImportance {
+		t.Error("delete button should not use the danger (bright red) importance")
+	}
+
+	// tapping the delete button only asks for confirmation
+	del.Tapped(nil)
+	if qApp.LocalModels.GetModel("tiny-llama") == nil {
+		t.Fatal("model was deleted before the confirmation was accepted")
+	}
+
+	// the confirmation dialog is showing over the window
+	overlay := win.Canvas().Overlays().Top()
+	if overlay == nil {
+		t.Fatal("expected a confirmation dialog to be shown")
+	}
+	confirm := findButtonByText(findButtons(overlay, nil), "Yes")
+	if confirm == nil {
+		t.Fatal("expected a confirm button in the dialog")
+	}
+
+	// accepting the confirmation deletes the model
+	confirm.Tapped(nil)
+	if qApp.LocalModels.GetModel("tiny-llama") != nil {
+		t.Fatal("model was not deleted after the confirmation was accepted")
+	}
+}
+
+// TestModelsTableDeleteButtonCancelKeepsModel verifies cancelling the
+// confirmation dialog leaves the model installed.
+func TestModelsTableDeleteButtonCancelKeepsModel(t *testing.T) {
+	test.NewApp()
+	qApp := newTestQApp(t, "tiny-llama")
+	g := CreateGui(nil, qApp)
+	table := g.newModelsTable()
+
+	win := test.NewWindow(table)
+	win.Resize(fyne.NewSize(900, 600))
+	defer win.Close()
+
+	g.mu.Lock()
+	g.mainWin = win
+	g.mu.Unlock()
+
+	del := findButtonByIconName(tableCellButtons(table, 0, 0), "delete")
+	if del == nil {
+		t.Fatal("expected a delete button in the actions column")
+	}
+	del.Tapped(nil)
+
+	cancel := findButtonByText(findButtons(win.Canvas().Overlays().Top(), nil), "No")
+	if cancel == nil {
+		t.Fatal("expected a dismiss button in the dialog")
+	}
+	cancel.Tapped(nil)
+
+	if qApp.LocalModels.GetModel("tiny-llama") == nil {
+		t.Fatal("model was deleted even though the confirmation was cancelled")
+	}
+}
+
+// TestModelsTableLogsButtonDisabledUnlessRunning verifies the actions column's
+// logs button is disabled while the model is not running and enabled once it
+// is.
+func TestModelsTableLogsButtonDisabledUnlessRunning(t *testing.T) {
+	test.NewApp()
+	qApp := newTestQApp(t, "tiny-llama")
+	g := CreateGui(nil, qApp)
+	table := g.newModelsTable()
+
+	// not running: disabled
+	logs := findButtonByText(tableCellButtons(table, 0, 0), "Logs")
+	if logs == nil {
+		t.Fatal("expected a logs button in the actions column")
+	}
+	if !logs.Disabled() {
+		t.Error("logs button should be disabled while the model is not running")
+	}
+
+	// running: enabled
+	stop := running.Default().Track(&fakeRunningModel{name: "tiny-llama"})
+	defer stop()
+
+	logs = findButtonByText(tableCellButtons(table, 0, 0), "Logs")
+	if logs == nil {
+		t.Fatal("expected a logs button in the actions column")
+	}
+	if logs.Disabled() {
+		t.Error("logs button should be enabled while the model is running")
 	}
 }
 
@@ -340,4 +471,25 @@ func tableCellButton(table *widget.Table, row, col int) *widget.Button {
 		return nil
 	}
 	return button
+}
+
+// findButtonByText returns the button carrying the given label, or nil.
+func findButtonByText(buttons []*widget.Button, text string) *widget.Button {
+	for _, b := range buttons {
+		if b.Text == text {
+			return b
+		}
+	}
+	return nil
+}
+
+// findButtonByIconName returns the button whose icon name contains substr
+// (case-insensitively), or nil.
+func findButtonByIconName(buttons []*widget.Button, substr string) *widget.Button {
+	for _, b := range buttons {
+		if b.Icon != nil && strings.Contains(strings.ToLower(b.Icon.Name()), substr) {
+			return b
+		}
+	}
+	return nil
 }

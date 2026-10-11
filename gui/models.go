@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -14,9 +15,9 @@ import (
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
-// modelColumns are the table headers shown for the model list. The last
-// column holds each model's start/stop action.
-var modelColumns = []string{"Name", "Type", "Status", "File", "Actions"}
+// modelColumns are the table headers shown for the model list. The first
+// column holds each model's row actions: start/stop, delete and logs.
+var modelColumns = []string{"Actions", "Name", "Type", "Status", "File"}
 
 // modelsPage renders the Models screen: the installed models, as a table with
 // a row per model. The table reads from the repository on refresh, so it
@@ -31,13 +32,13 @@ func (this *QGUI) modelsPage() fyne.CanvasObject {
 }
 
 // newModelsTable builds the installed-models table: one row per model, with
-// a start/stop action button on the right.
+// the row's actions (start/stop, delete, logs) in the leftmost column.
 func (this *QGUI) newModelsTable() *widget.Table {
 	table := widget.NewTable(
 		func() (int, int) {
 			return len(this.QApp.LocalModels.Models()), len(modelColumns)
 		},
-		modelCellFactory,
+		modelsCellFactory,
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
 			models := this.QApp.LocalModels.Models()
 			if id.Row < 0 || id.Row >= len(models) {
@@ -59,32 +60,46 @@ func (this *QGUI) newModelsTable() *widget.Table {
 		}
 	}
 
-	table.SetColumnWidth(0, 220) // Name
-	table.SetColumnWidth(1, 80)  // Type
-	table.SetColumnWidth(2, 90)  // Running
-	table.SetColumnWidth(3, 400) // File
-	table.SetColumnWidth(4, 110) // Action
+	table.SetColumnWidth(0, 250) // Actions
+	table.SetColumnWidth(1, 220) // Name
+	table.SetColumnWidth(2, 80)  // Type
+	table.SetColumnWidth(3, 90)  // Status
+	table.SetColumnWidth(4, 400) // File
 
 	this.modelsTable = table
 	return table
 }
 
-// modelCellFactory builds a cell of the model (and running-models) tables.
-// The cell needs a real layout: a bare &fyne.Container{} never lays out its
-// children, which leaves them at 0x0 - invisible and untappable. It also
-// needs a minimum size that fits the action button, because the table sizes
-// its rows from the template cell's minimum size; the seeded button is only
+// modelsCellFactory builds a cell of the installed-models table. The cell
+// needs a real layout: a bare &fyne.Container{} never lays out its children,
+// which leaves them at 0x0 - invisible and untappable. It also needs a
+// minimum size that fits the row's action buttons, because the table sizes
+// its rows from the template cell's minimum size; the seeded buttons are only
 // measured and never rendered (updateModelCell replaces the contents).
-func modelCellFactory() fyne.CanvasObject {
+func modelsCellFactory() fyne.CanvasObject {
+	return container.NewHBox(
+		widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), nil),
+		widget.NewButtonWithIcon("", theme.DeleteIcon(), nil),
+		widget.NewButtonWithIcon("Logs", theme.FileTextIcon(), nil),
+	)
+}
+
+// runningModelCellFactory builds a cell of the Overview's running-models
+// table, sized to fit its single action button (see modelsCellFactory for why
+// the template needs a layout and a minimum size).
+func runningModelCellFactory() fyne.CanvasObject {
 	return container.NewVBox(widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), nil))
 }
 
 // updateModelCell fills one cell of the model table: a label for the data
-// columns, and the start/stop button in the last column.
+// columns, and the row's actions (start/stop, delete, logs) in the first
+// column.
 func (this *QGUI) updateModelCell(m modelDefinitions.Model, id widget.TableCellID, cell *fyne.Container) {
 	cell.RemoveAll()
-	if id.Col == len(modelColumns)-1 {
+	if id.Col == 0 {
 		cell.Add(this.modelActionButton(m))
+		cell.Add(this.modelDeleteButton(m))
+		cell.Add(this.modelLogsButton(m))
 	} else {
 		label := widget.NewLabel(modelCell(m, id.Col))
 		label.Wrapping = fyne.TextWrapOff
@@ -103,6 +118,74 @@ func (this *QGUI) modelActionButton(m modelDefinitions.Model) *widget.Button {
 	return widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), func() {
 		this.startModel(&m)
 	})
+}
+
+// modelDeleteButton builds the delete button for a model's table row. It uses
+// the standard delete icon at the normal button importance, so its icon is
+// drawn in the theme's foreground color rather than the alarming error (red)
+// color a danger button would use. Tapping it asks for confirmation before the
+// model is actually removed (see confirmDeleteModel).
+func (this *QGUI) modelDeleteButton(m modelDefinitions.Model) *widget.Button {
+	return widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+		this.confirmDeleteModel(m)
+	})
+}
+
+// modelLogsButton builds the logs button for a model's table row. It opens the
+// same log viewer as the Overview's running-models table. The button is
+// disabled while the model is not running, because there are no captured log
+// lines to show.
+func (this *QGUI) modelLogsButton(m modelDefinitions.Model) *widget.Button {
+	button := widget.NewButtonWithIcon("Logs", theme.FileTextIcon(), func() {
+		if running := runningModelFor(m.ModelName); running != nil {
+			this.showLogs(running)
+		}
+	})
+	if runningModelFor(m.ModelName) == nil {
+		button.Disable()
+	}
+	return button
+}
+
+// confirmDeleteModel asks the user to confirm deleting the named model before
+// anything is removed. The model is only deleted when the user accepts;
+// cancelling leaves it untouched.
+func (this *QGUI) confirmDeleteModel(m modelDefinitions.Model) {
+	this.mu.Lock()
+	win := this.mainWin
+	this.mu.Unlock()
+	if win == nil {
+		return
+	}
+	message := fmt.Sprintf("Delete model %q?\n\nThis removes the model and its files, and cannot be undone.", m.ModelName)
+	dialog.NewConfirm("Delete Model", message, func(confirmed bool) {
+		if confirmed {
+			this.deleteModel(m.ModelName)
+		}
+	}, win).Show()
+}
+
+// deleteModel removes the named model from local storage and refreshes the
+// installed-models table so its row disappears.
+func (this *QGUI) deleteModel(modelName string) {
+	if err := this.QApp.LocalModels.RemoveModel(modelName); err != nil {
+		this.notifyError(fmt.Sprintf("deleting %s: %v", modelName, err))
+		return
+	}
+	if this.modelsTable != nil {
+		this.modelsTable.Refresh()
+	}
+}
+
+// runningModelFor returns the running model with the given name, or nil when
+// no such model is running.
+func runningModelFor(modelName string) runnerDefinitions.RunningModel {
+	for _, m := range running.Default().RunningModels() {
+		if m.ModelName() == modelName {
+			return m
+		}
+	}
+	return nil
 }
 
 // startModel runs the given model on the first installed backend that can
@@ -125,18 +208,19 @@ func (this *QGUI) stopModel(modelName string) {
 }
 
 // modelCell returns the display value for one data cell of the model table.
+// Column 0 holds the row actions, not a label.
 func modelCell(m modelDefinitions.Model, col int) string {
 	switch col {
-	case 0:
-		return m.ModelName
 	case 1:
-		return m.ModelType
+		return m.ModelName
 	case 2:
+		return m.ModelType
+	case 3:
 		if isRunning(m.ModelName) {
 			return "running"
 		}
 		return "idle"
-	case 3:
+	case 4:
 		return m.ModelFile
 	default:
 		return ""
@@ -145,12 +229,7 @@ func modelCell(m modelDefinitions.Model, col int) string {
 
 // isRunning reports whether a model with the given name is currently running.
 func isRunning(modelName string) bool {
-	for _, m := range running.Default().RunningModels() {
-		if m.ModelName() == modelName {
-			return true
-		}
-	}
-	return false
+	return runningModelFor(modelName) != nil
 }
 
 // runningModelColumns are the table headers for the Overview's running-models
@@ -166,7 +245,7 @@ func (this *QGUI) runningModelsContent() fyne.CanvasObject {
 		func() (int, int) {
 			return len(running.Default().RunningModels()), len(runningModelColumns)
 		},
-		modelCellFactory,
+		runningModelCellFactory,
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
 			models := running.Default().RunningModels()
 			if id.Row < 0 || id.Row >= len(models) {

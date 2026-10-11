@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
@@ -248,19 +247,11 @@ func TestBackendsTableMoveUpdatesOrderAndView(t *testing.T) {
 	}
 }
 
-// tableCellButtons renders one data cell and returns the buttons of its
-// action box.
+// tableCellButtons renders one data cell and returns every button it holds,
+// whether the cell holds them directly (the models table) or wrapped in an
+// action box (the backends table).
 func tableCellButtons(table *widget.Table, row, col int) []*widget.Button {
-	obj := tableCellObject(table, row, col)
-	box, ok := obj.(*fyne.Container)
-	if !ok {
-		return nil
-	}
-	var buttons []*widget.Button
-	for _, o := range box.Objects {
-		if b, ok := o.(*widget.Button); ok {
-			buttons = append(buttons, b)
-		}
-	}
-	return buttons
+	cell := table.CreateCell()
+	table.UpdateCell(widget.TableCellID{Row: row, Col: col}, cell)
+	return findButtons(cell, nil)
 }

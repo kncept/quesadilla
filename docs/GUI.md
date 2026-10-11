@@ -35,6 +35,9 @@ Has a 'back' button at the bottom that closes the window
 
 ## Models Page
 Installed Models (including config and running stats)
+Each row's actions are in the leftmost column: a start/stop button, a delete
+button (which asks for confirmation before removing the model), and a logs
+button that is enabled only while the model is running.
 
 ### Scan Models Section
 Includes a 'scan' section where Models can be scanned, and can be linked or unlinked.

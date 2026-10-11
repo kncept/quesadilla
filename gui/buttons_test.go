@@ -57,15 +57,20 @@ func TestModelsTableButtonTap(t *testing.T) {
 	win.Resize(fyne.NewSize(900, 600))
 
 	buttons := findButtons(table, nil)
-	if len(buttons) != 1 {
-		t.Fatalf("found %d buttons in the rendered table, want 1", len(buttons))
+	if len(buttons) != 3 {
+		t.Fatalf("found %d buttons in the rendered table, want 3 (start/stop, delete, logs)", len(buttons))
 	}
-	button := buttons[0]
+	var button *widget.Button
+	for _, b := range buttons {
+		if b.Text == "Start" {
+			button = b
+		}
+	}
+	if button == nil {
+		t.Fatal("expected a Start button in the rendered table")
+	}
 	if button.Size().Width <= 0 || button.Size().Height <= 0 {
 		t.Fatalf("button has zero size: %v (never laid out)", button.Size())
-	}
-	if got := button.Text; got != "Start" {
-		t.Fatalf("button text = %q, want %q", got, "Start")
 	}
 
 	called := false
