@@ -64,12 +64,15 @@ type Model struct {
 // repository: on a model hub, or in another application's model directory.
 // Its variants carry where their files can be fetched from (Location); the
 // local repository stamps the rest (import times, sizes) when the model is
-// installed.
+// installed. ModelURL is a page the user can open to view the model at its
+// source (eg the model's card on a model hub); it is empty when the scanner
+// does not know of one.
 type RemoteModel struct {
 	ModelFamily string
 	ModelName   string
 	ModelSource string // name of the scanner that found the model
 	ModelType   string
+	ModelURL    string // URL of the model's page at its source, if known
 	Variants    []ModelVariant
 	LicenceName string
 	LicenceFile string // URL or path to the licence file, if known

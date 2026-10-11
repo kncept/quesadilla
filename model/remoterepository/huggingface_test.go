@@ -117,6 +117,9 @@ func TestHuggingFaceScanForModels(t *testing.T) {
 		if len(m.Variants) == 0 {
 			t.Errorf("model %s has no variants", m.FullModelName())
 		}
+		if want := server.URL + "/" + m.FullModelName(); m.ModelURL != want {
+			t.Errorf("model URL of %s = %q, want %q", m.FullModelName(), m.ModelURL, want)
+		}
 	}
 
 	byName := make(map[string]struct {

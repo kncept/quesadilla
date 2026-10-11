@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path"
-	"strings"
 	"testing"
 	"time"
 
@@ -97,18 +96,18 @@ func waitForSearchFinish(t *testing.T, g *QGUI) {
 	t.Fatal("timed out waiting for the model search to finish")
 }
 
-// waitForDownloadFinish blocks until a model download in progress has
-// finished (the status label leaves its "Downloading..." state).
+// waitForDownloadFinish blocks until a model download/import/link in progress
+// has finished (no install is reported in flight).
 func waitForDownloadFinish(t *testing.T, g *QGUI) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if !strings.HasPrefix(g.searchStatusLabel.Text, "Downloading ") {
+		if g.downloadsInFlight == 0 {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("timed out waiting for the model download to finish")
+	t.Fatal("timed out waiting for the model install to finish")
 }
 
 // TestModelSearchPageListsScanners verifies the search screen lists the
@@ -118,7 +117,7 @@ func TestModelSearchPageListsScanners(t *testing.T) {
 	g := CreateGui(nil, newTestQAppWithLocalAiModel(t, "tiny-llama"))
 	g.modelSearchPage()
 
-	want := []string{"Overview", "HuggingFace", "LocalAI"}
+	want := []string{"Overview", "Filesystem", "HuggingFace", "LocalAI"}
 	if got := g.searchScannersList.Length(); got != len(want) {
 		t.Fatalf("rows = %d, want %d", got, len(want))
 	}

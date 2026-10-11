@@ -21,6 +21,7 @@ func NewRemoteRepository() *RemoteRepository {
 	repository := &RemoteRepository{}
 	repository.register(NewLocalAiScanner())
 	repository.register(NewHuggingFaceScanner())
+	repository.register(NewFilesystemScanner())
 	return repository
 }
 

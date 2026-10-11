@@ -25,7 +25,7 @@ func TestRemoteRepositoryScannerNames(t *testing.T) {
 // registered, and that unknown names come back as nil.
 func TestRemoteRepositoryGetScanner(t *testing.T) {
 	repository := NewRemoteRepository()
-	for _, name := range []string{"LocalAI", "HuggingFace"} {
+	for _, name := range []string{"Filesystem", "LocalAI", "HuggingFace"} {
 		if repository.GetScanner(name) == nil {
 			t.Errorf("expected the %s scanner to be registered", name)
 		}
@@ -43,7 +43,7 @@ func TestRemoteRepositoryScanners(t *testing.T) {
 	for _, scanner := range scanners {
 		names = append(names, scanner.ScannerName())
 	}
-	want := []string{"HuggingFace", "LocalAI"}
+	want := []string{"Filesystem", "HuggingFace", "LocalAI"}
 	if len(names) != len(want) {
 		t.Fatalf("scanners = %v, want %v", names, want)
 	}

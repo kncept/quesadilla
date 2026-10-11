@@ -52,6 +52,31 @@ Backends broken out by the model types they support: one row per (model type, ba
 The rows follow the persisted (model type, backend id) order, where the topmost backend of a model type is the default backend for that type.
 Each row has move up/down buttons to reorder the backends within their model type; the order is persisted in the config (~/.quesadilla/config.json), so it (and its default) survive a restart.
 
+## Model Search Page
+Find models to install from several sources. The scanners are listed on the left;
+selecting one runs its search and lists the results in a table on the right.
+
+- **HuggingFace** lists popular GGUF models from the HuggingFace hub.
+- **LocalAI** lists models installed by localai.
+- **Filesystem** searches a directory of your choosing for `.gguf` files. It
+  shows a small form: the directory to search, a numeric `Depth` (how many
+  levels below the directory to descend, `0` being the directory itself), and
+  an `Unlimited` checkbox. Checking `Unlimited` disables the depth entry and
+  shows it as `-1`. The search button stays disabled until a directory is
+  entered and the depth is valid (a number `>= 0`, or unlimited). Every
+  directory holding at least one `.gguf` file is listed as one model, named by
+  its path relative to the search root, with each `.gguf` file as a variant.
+
+Results carry action buttons in the first column:
+
+- Models from HuggingFace and LocalAI have the usual **Download** button, and
+  HuggingFace models also have a **Link** button to the right that opens the
+  model's card in the system browser.
+- Filesystem models have a **Link** button, which installs the model by
+  pointing at its files where they are (nothing is copied), and an **Import**
+  button, which copies the model's files into quesadilla's data directory like
+  a normal download.
+
 # Technology
 
 The GUI is written in https://github.com/fyne-io/fyne

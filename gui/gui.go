@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -29,6 +30,11 @@ type QGUI struct {
 	SysLink SystemAgnosticOperations
 	QApp    *qapp.QApp
 
+	// openURL opens a URL in the system browser when it is set; the search
+	// screen's model-card buttons fall back to fyne.App.OpenURL otherwise.
+	// It is a field so tests can capture the URL that would be opened.
+	openURL func(*url.URL) error
+
 	mu      sync.Mutex
 	started bool
 	app     fyne.App
@@ -45,15 +51,23 @@ type QGUI struct {
 
 	// The model-search screen's widgets and its last scan's results; the
 	// search runs in the background and updates them when it finishes. Nil
-	// until the main window is built.
-	searchRunning      bool
-	downloadsInFlight  int
-	searchScannersList *widget.List
-	searchSpinner      *widget.ProgressBarInfinite
-	searchStatusLabel  *widget.Label
-	searchOverview     *widget.Label
-	searchResultsTable *widget.Table
-	searchResults      []modelDefinitions.RemoteModel
+	// until the main window is built. The filesystem scanner's configuration
+	// form holds the chosen directory and depth.
+	searchRunning          bool
+	downloadsInFlight      int
+	searchScannersList     *widget.List
+	searchSpinner          *widget.ProgressBarInfinite
+	searchStatusLabel      *widget.Label
+	searchOverview         *widget.Label
+	searchResultsTable     *widget.Table
+	searchResultsStack     *fyne.Container
+	searchResults          []modelDefinitions.RemoteModel
+	searchFilesystemForm   *fyne.Container
+	searchDirectoryEntry   *widget.Entry
+	searchDepthEntry       *widget.Entry
+	searchUnlimitedCheck   *widget.Check
+	searchFilesystemButton *widget.Button
+	searchDepthLast        string
 }
 
 // Start launches the lightweight system-tray indicator. Blocks until quit.

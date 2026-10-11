@@ -133,6 +133,7 @@ func (this *HuggingFaceScanner) toRemoteModel(m hfModel) *definitions.RemoteMode
 		ModelName:   "",
 		ModelSource: this.ScannerName(),
 		ModelType:   string(definitions.ModelTypeGGUF),
+		ModelURL:    m.repoURL(),
 		Variants:    variants,
 		LicenceName: m.License,
 	}

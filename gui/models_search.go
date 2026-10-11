@@ -2,6 +2,8 @@ package gui
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -9,11 +11,12 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	"github.com/kncept/quesadilla/model/remoterepository"
 )
 
 // modelSearchColumns are the table headers shown for the model search
-// results. The first column holds each model's download button.
-var modelSearchColumns = []string{"Download", "Name", "Type", "File"}
+// results. The first column holds each model's action buttons.
+var modelSearchColumns = []string{"Action", "Name", "Type", "File"}
 
 // modelSearchOverviewText is what the search screen's overview explains:
 // that the screen is for finding models to install.
@@ -69,7 +72,7 @@ func (this *QGUI) modelSearchPage() fyne.CanvasObject {
 			this.showModelSearchOverview()
 			return
 		}
-		this.runModelSearch(scanners[id-1])
+		this.selectModelScanner(scanners[id-1])
 	}
 
 	// the search status: a spinner while a scan is active, and a label with
@@ -79,16 +82,19 @@ func (this *QGUI) modelSearchPage() fyne.CanvasObject {
 	this.searchSpinner.Hide()
 	this.searchStatusLabel.Hide()
 
-	// the results area: the overview text, or the last scan's results
+	// the results area: the overview text, the last scan's results, or (once
+	// picked) the filesystem scanner's configuration form
 	this.searchOverview = widget.NewLabel(modelSearchOverviewText)
 	this.searchOverview.Wrapping = fyne.TextWrapWord
 	this.searchResultsTable = newSearchResultsTable(this)
 	this.searchResultsTable.Hide()
 
+	this.searchResultsStack = container.NewStack(this.searchOverview, this.searchResultsTable)
+
 	right := container.NewBorder(
 		container.NewHBox(this.searchSpinner, this.searchStatusLabel), // top: search status
 		nil, nil, nil,
-		container.NewStack(this.searchOverview, this.searchResultsTable),
+		this.searchResultsStack,
 	)
 
 	left := container.NewPadded(this.searchScannersList)
@@ -105,8 +111,9 @@ func (this *QGUI) modelSearchPage() fyne.CanvasObject {
 	return content
 }
 
-// newSearchResultsTable builds the table of the last scan's results: a
-// download button in the first column, then the model's name, type and file.
+// newSearchResultsTable builds the table of the last scan's results: the
+// model's action buttons in the first column, then the model's name, type and
+// file.
 func newSearchResultsTable(g *QGUI) *widget.Table {
 	table := widget.NewTable(
 		func() (int, int) {
@@ -131,7 +138,7 @@ func newSearchResultsTable(g *QGUI) *widget.Table {
 		}
 	}
 
-	table.SetColumnWidth(0, 150) // Download
+	table.SetColumnWidth(0, 220) // Action
 	table.SetColumnWidth(1, 210) // Name
 	table.SetColumnWidth(2, 80)  // Type
 	table.SetColumnWidth(3, 320) // File
@@ -142,25 +149,84 @@ func newSearchResultsTable(g *QGUI) *widget.Table {
 // searchResultsCellFactory builds a cell of the search-results table. The
 // cell needs a real layout: a bare &fyne.Container{} never lays out its
 // children, which leaves them at 0x0 - invisible and untappable. It also
-// needs a minimum size that fits the download button, because the table sizes
-// its rows from the template cell's minimum size; the seeded button is only
-// measured and never rendered (updateSearchResultCell replaces the contents).
+// needs a minimum size that fits the row's action buttons, because the table
+// sizes its rows from the template cell's minimum size; the seeded buttons
+// are only measured and never rendered (updateSearchResultCell replaces the
+// contents).
 func searchResultsCellFactory() fyne.CanvasObject {
-	return container.NewVBox(widget.NewButtonWithIcon("Download", theme.DownloadIcon(), nil))
+	return container.NewHBox(
+		widget.NewButtonWithIcon("Link", theme.ContentCopyIcon(), nil),
+		widget.NewButtonWithIcon("Import", theme.DownloadIcon(), nil),
+	)
 }
 
 // updateSearchResultCell fills one cell of the search-results table: the
-// download button in the first column, and a label for the data columns.
+// model's actions in the first column, and a label for the data columns.
+// Models found by the filesystem scanner can be linked or imported, so their
+// row carries both buttons. Models found by the other scanners carry a
+// download (or copy) button, plus a button opening the model's page at its
+// source when the scanner knows of one.
 func (this *QGUI) updateSearchResultCell(m modelDefinitions.RemoteModel, id widget.TableCellID, cell *fyne.Container) {
 	cell.RemoveAll()
 	if id.Col == 0 {
-		cell.Add(this.modelDownloadButton(m))
+		if m.ModelSource == remoterepository.FilesystemScannerName {
+			cell.Add(this.modelLinkButton(m))
+			cell.Add(this.modelImportButton(m))
+		} else {
+			cell.Add(this.modelDownloadButton(m))
+			if m.ModelURL != "" {
+				cell.Add(this.modelCardButton(m))
+			}
+		}
 	} else {
 		label := widget.NewLabel(searchResultCell(m, id.Col))
 		label.Wrapping = fyne.TextWrapOff
 		cell.Add(label)
 	}
 	cell.Refresh()
+}
+
+// modelLinkButton builds the "Link" button for a filesystem search result's
+// row: it links the model into local storage without moving its files.
+func (this *QGUI) modelLinkButton(m modelDefinitions.RemoteModel) *widget.Button {
+	return widget.NewButtonWithIcon("Link", theme.ContentCopyIcon(), func() {
+		this.linkModel(m)
+	})
+}
+
+// modelImportButton builds the "Import" button for a filesystem search
+// result's row: it copies the model's files into local storage.
+func (this *QGUI) modelImportButton(m modelDefinitions.RemoteModel) *widget.Button {
+	return widget.NewButtonWithIcon("Import", theme.DownloadIcon(), func() {
+		this.importModel(m)
+	})
+}
+
+// modelCardButton builds the "Link" button shown to the right of a remote
+// model's download button: it opens the model's page (eg its card on a model
+// hub) in the system browser.
+func (this *QGUI) modelCardButton(m modelDefinitions.RemoteModel) *widget.Button {
+	return widget.NewButtonWithIcon("Link", theme.ComputerIcon(), func() {
+		this.openModelCard(m.ModelURL)
+	})
+}
+
+// openModelCard opens the model's page in the system browser. The URL is
+// routed through the openURL hook when set (the tests use it), and otherwise
+// through the app, which launches the system browser.
+func (this *QGUI) openModelCard(rawURL string) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		this.notifyError(fmt.Sprintf("opening the model card: %v", err))
+		return
+	}
+	if this.openURL != nil {
+		_ = this.openURL(u)
+		return
+	}
+	if a := fyne.CurrentApp(); a != nil {
+		_ = a.OpenURL(u)
+	}
 }
 
 // modelDownloadButton builds the download button for a search result's row:
@@ -201,6 +267,20 @@ func searchResultCell(m modelDefinitions.RemoteModel, col int) string {
 func (this *QGUI) showModelSearchOverview() {
 	this.searchOverview.Show()
 	this.searchResultsTable.Hide()
+	if this.searchFilesystemForm != nil {
+		this.searchFilesystemForm.Hide()
+	}
+}
+
+// selectModelScanner handles picking a scanner from the list. The filesystem
+// scanner cannot scan until the user supplies a directory, so it shows its
+// configuration form instead; every other scanner runs its scan immediately.
+func (this *QGUI) selectModelScanner(scanner modelDefinitions.ModelScanner) {
+	if _, ok := scanner.(*remoterepository.FilesystemScanner); ok {
+		this.showFilesystemSearchForm()
+		return
+	}
+	this.runModelSearch(scanner)
 }
 
 // runModelSearch runs the named scanner's scan in the background: the
@@ -215,6 +295,9 @@ func (this *QGUI) runModelSearch(scanner modelDefinitions.ModelScanner) {
 	this.searchSpinner.Show()
 	this.searchStatusLabel.Show()
 	this.searchStatusLabel.SetText(fmt.Sprintf("Searching with %s...", scanner.ScannerName()))
+	if this.searchFilesystemForm != nil {
+		this.searchFilesystemForm.Hide()
+	}
 
 	go func() {
 		models, err := scanner.ScanForModels()
@@ -239,6 +322,9 @@ func (this *QGUI) finishModelSearch(models []modelDefinitions.RemoteModel, err e
 	// no download is still in progress
 	if this.downloadsInFlight == 0 {
 		this.searchSpinner.Hide()
+	}
+	if this.searchFilesystemForm != nil {
+		this.searchFilesystemForm.Hide()
 	}
 
 	if err != nil {
@@ -266,16 +352,53 @@ func (this *QGUI) finishModelSearch(models []modelDefinitions.RemoteModel, err e
 	this.searchRunning = false
 }
 
+// modelInstallAction names what installing a scanned model will do, so the
+// status messages ("Downloading...", "Downloaded ...", "Download failed: ...")
+// can be built for each action.
+type modelInstallAction struct {
+	// verb is the action's present-tense name: "Download", "Import" or "Link".
+	verb string
+	// link installs the model by pointing at its source files, rather than
+	// copying them into local storage.
+	link bool
+}
+
+var (
+	installDownload = modelInstallAction{verb: "Download"}
+	installImport   = modelInstallAction{verb: "Import"}
+	installLink     = modelInstallAction{verb: "Link", link: true}
+)
+
 // downloadModel downloads (or copies, for local sources) the named scanned
 // model into local storage. The work runs in the background, with the spinner
 // and the status label showing progress; when it finishes the search-results
 // table and the installed-models table are refreshed, so the button reads
 // "Redownload" and the model shows up on the Models screen.
 func (this *QGUI) downloadModel(m modelDefinitions.RemoteModel) {
+	this.installModel(m, installDownload)
+}
+
+// importModel copies the named scanned model's files into local storage, the
+// same way downloadModel does for models that are not local files.
+func (this *QGUI) importModel(m modelDefinitions.RemoteModel) {
+	this.installModel(m, installImport)
+}
+
+// linkModel links the named scanned model into local storage: only its
+// metadata is stored, and its variants keep pointing at the source files.
+func (this *QGUI) linkModel(m modelDefinitions.RemoteModel) {
+	this.installModel(m, installLink)
+}
+
+// installModel installs the named scanned model according to action: it
+// re-resolves the model through its scanner and then either links it or
+// downloads (copies) it. The work runs in the background, with the spinner
+// and the status label showing progress.
+func (this *QGUI) installModel(m modelDefinitions.RemoteModel, action modelInstallAction) {
 	this.downloadsInFlight++
 	this.searchSpinner.Show()
 	this.searchStatusLabel.Show()
-	this.searchStatusLabel.SetText(fmt.Sprintf("Downloading %s...", m.FullModelName()))
+	this.searchStatusLabel.SetText(fmt.Sprintf("%sing %s...", action.verb, m.FullModelName()))
 
 	go func() {
 		var err error
@@ -286,21 +409,23 @@ func (this *QGUI) downloadModel(m modelDefinitions.RemoteModel) {
 			remote := scanner.GetModel(m.FullModelName())
 			if remote == nil {
 				err = fmt.Errorf("%s model %s not found", m.ModelSource, m.FullModelName())
+			} else if action.link {
+				err = this.QApp.LocalModels.LinkScannedModel(remote)
 			} else {
 				err = this.QApp.LocalModels.DownloadModel(remote)
 			}
 		}
 		fyne.Do(func() {
-			this.finishModelDownload(m.FullModelName(), err)
+			this.finishModelInstall(action, m.FullModelName(), err)
 		})
 	}()
 }
 
-// finishModelDownload applies the outcome of a model download to the screen:
+// finishModelInstall applies the outcome of a model install to the screen:
 // the status label, and a refresh of the search-results table (so the button
 // reads "Redownload" once the model is installed) and of the installed-models
 // table (so the model appears on the Models screen).
-func (this *QGUI) finishModelDownload(modelName string, err error) {
+func (this *QGUI) finishModelInstall(action modelInstallAction, modelName string, err error) {
 	if this.downloadsInFlight > 0 {
 		this.downloadsInFlight--
 	}
@@ -308,10 +433,10 @@ func (this *QGUI) finishModelDownload(modelName string, err error) {
 		this.searchSpinner.Hide()
 	}
 	if err != nil {
-		this.searchStatusLabel.SetText(fmt.Sprintf("Download failed: %v", err))
-		this.notifyError(fmt.Sprintf("downloading %s: %v", modelName, err))
+		this.searchStatusLabel.SetText(fmt.Sprintf("%s failed: %v", action.verb, err))
+		this.notifyError(fmt.Sprintf("%sing %s: %v", strings.ToLower(action.verb), modelName, err))
 	} else {
-		this.searchStatusLabel.SetText(fmt.Sprintf("Downloaded %s", modelName))
+		this.searchStatusLabel.SetText(fmt.Sprintf("%sed %s", action.verb, modelName))
 	}
 	this.searchResultsTable.Refresh()
 	if this.modelsTable != nil {
