@@ -176,7 +176,7 @@ func TestModelSearchSelectOverview(t *testing.T) {
 	g := CreateGui(nil, newTestQAppWithLocalAiModel(t, "tiny-llama"))
 	fake := &fakeSearchScanner{
 		name:   "ZTest",
-		models: []modelDefinitions.RemoteModel{{Model: modelDefinitions.Model{ModelName: "org/a"}}},
+		models: []modelDefinitions.RemoteModel{{ModelFamily: "org", ModelName: "a", ModelType: "gguf"}},
 	}
 	g.QApp.RemoteModels.Register(fake)
 	g.modelSearchPage()
@@ -209,8 +209,14 @@ func TestModelSearchRunScan(t *testing.T) {
 		name:  "ZTest",
 		block: block,
 		models: []modelDefinitions.RemoteModel{
-			{Model: modelDefinitions.Model{ModelName: "org/a", ModelType: "gguf", ModelFile: "https://x.org/a"}},
-			{Model: modelDefinitions.Model{ModelName: "org/b", ModelType: "hf", ModelFile: "https://x.org/b"}},
+			{
+				ModelFamily: "org", ModelName: "a", ModelType: "gguf",
+				Variants: []modelDefinitions.ModelVariant{{FileName: "a.gguf", Location: "https://x.org/a"}},
+			},
+			{
+				ModelFamily: "org", ModelName: "b", ModelType: "hf",
+				Variants: []modelDefinitions.ModelVariant{{FileName: "b.gguf", Location: "https://x.org/b"}},
+			},
 		},
 	}
 	g.QApp.RemoteModels.Register(fake)
@@ -272,8 +278,8 @@ func TestModelSearchRunScan(t *testing.T) {
 	if got := tableCellText(g.searchResultsTable, 1, 2); got != "hf" {
 		t.Errorf("result type = %q, want hf", got)
 	}
-	if got := tableCellText(g.searchResultsTable, 0, 3); got != "https://x.org/a" {
-		t.Errorf("result file = %q, want https://x.org/a", got)
+	if got := tableCellText(g.searchResultsTable, 0, 3); got != "a.gguf" {
+		t.Errorf("result file = %q, want a.gguf", got)
 	}
 }
 
@@ -383,8 +389,14 @@ func TestModelSearchDownloadButtonLabels(t *testing.T) {
 	fake := &fakeSearchScanner{
 		name: "ZTest",
 		models: []modelDefinitions.RemoteModel{
-			{Model: modelDefinitions.Model{ModelName: "installed-model", ModelType: "gguf", ModelFile: "https://x.org/installed-model"}},
-			{Model: modelDefinitions.Model{ModelName: "org/a", ModelType: "gguf", ModelFile: "https://x.org/org/a"}},
+			{
+				ModelFamily: "", ModelName: "installed-model", ModelType: "gguf",
+				Variants: []modelDefinitions.ModelVariant{{FileName: "installed-model.gguf", Location: "https://x.org/installed-model"}},
+			},
+			{
+				ModelFamily: "org", ModelName: "a", ModelType: "gguf",
+				Variants: []modelDefinitions.ModelVariant{{FileName: "a.gguf", Location: "https://x.org/org/a"}},
+			},
 		},
 	}
 	g.QApp.RemoteModels.Register(fake)
@@ -454,19 +466,23 @@ func TestModelSearchDownloadFromURL(t *testing.T) {
 	fake := &fakeSearchScanner{
 		name: "ZTest",
 		models: []modelDefinitions.RemoteModel{
-			{Model: modelDefinitions.Model{ModelName: "org/a", ModelType: "gguf", ModelFile: server.URL}},
+			{
+				ModelFamily: "org", ModelName: "a", ModelType: "gguf",
+				Variants: []modelDefinitions.ModelVariant{{FileName: "a.gguf", Location: server.URL}},
+			},
 		},
 		get: func(name string) *modelDefinitions.RemoteModel {
 			if name != "org/a" {
 				return nil
 			}
 			return &modelDefinitions.RemoteModel{
-				Model: modelDefinitions.Model{
-					ModelName: "org/a",
-					ModelType: "gguf",
-					ModelFile: server.URL + "/a.gguf",
+				ModelFamily: "org",
+				ModelName:   "a",
+				ModelType:   "gguf",
+				ModelSource: "ZTest",
+				Variants: []modelDefinitions.ModelVariant{
+					{FileName: "a.gguf", Location: server.URL + "/a.gguf"},
 				},
-				ScannerName: "ZTest",
 			}
 		},
 	}
@@ -523,7 +539,10 @@ func TestModelSearchDownloadModelNotFound(t *testing.T) {
 	fake := &fakeSearchScanner{
 		name: "ZTest",
 		models: []modelDefinitions.RemoteModel{
-			{Model: modelDefinitions.Model{ModelName: "org/a", ModelType: "gguf", ModelFile: "https://x.org"}},
+			{
+				ModelFamily: "org", ModelName: "a", ModelType: "gguf",
+				Variants: []modelDefinitions.ModelVariant{{FileName: "a.gguf", Location: "https://x.org"}},
+			},
 		},
 	}
 	g.QApp.RemoteModels.Register(fake)

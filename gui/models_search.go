@@ -167,7 +167,7 @@ func (this *QGUI) updateSearchResultCell(m modelDefinitions.RemoteModel, id widg
 // "Download" when the model is not installed locally yet, and "Redownload"
 // when it already is (matched by name).
 func (this *QGUI) modelDownloadButton(m modelDefinitions.RemoteModel) *widget.Button {
-	if this.QApp.LocalModels.GetModel(m.ModelName) != nil {
+	if this.QApp.LocalModels.GetModel(m.FullModelName()) != nil {
 		return widget.NewButtonWithIcon("Redownload", theme.ViewRefreshIcon(), func() {
 			this.downloadModel(m)
 		})
@@ -178,15 +178,20 @@ func (this *QGUI) modelDownloadButton(m modelDefinitions.RemoteModel) *widget.Bu
 }
 
 // searchResultCell returns the display value for one data cell of the
-// search-results table. Column 0 holds the download button, not a label.
+// search-results table. Column 0 holds the download button, not a label. The
+// file column shows the model's first variant (a model's variants are the
+// individual files it can be run from).
 func searchResultCell(m modelDefinitions.RemoteModel, col int) string {
 	switch col {
 	case 1:
-		return m.ModelName
+		return m.FullModelName()
 	case 2:
 		return m.ModelType
 	case 3:
-		return m.ModelFile
+		if len(m.Variants) > 0 {
+			return m.Variants[0].FileName
+		}
+		return ""
 	default:
 		return ""
 	}
@@ -217,7 +222,7 @@ func (this *QGUI) runModelSearch(scanner modelDefinitions.ModelScanner) {
 		// so stamp the scanner name on every result; the download action
 		// looks the scanner back up by that name
 		for i := range models {
-			models[i].ScannerName = scanner.ScannerName()
+			models[i].ModelSource = scanner.ScannerName()
 		}
 		fyne.Do(func() {
 			this.finishModelSearch(models, err)
@@ -270,23 +275,23 @@ func (this *QGUI) downloadModel(m modelDefinitions.RemoteModel) {
 	this.downloadsInFlight++
 	this.searchSpinner.Show()
 	this.searchStatusLabel.Show()
-	this.searchStatusLabel.SetText(fmt.Sprintf("Downloading %s...", m.ModelName))
+	this.searchStatusLabel.SetText(fmt.Sprintf("Downloading %s...", m.FullModelName()))
 
 	go func() {
 		var err error
-		scanner := this.QApp.RemoteModels.GetScanner(m.ScannerName)
+		scanner := this.QApp.RemoteModels.GetScanner(m.ModelSource)
 		if scanner == nil {
-			err = fmt.Errorf("scanner %s is not available", m.ScannerName)
+			err = fmt.Errorf("scanner %s is not available", m.ModelSource)
 		} else {
-			remote := scanner.GetModel(m.ModelName)
+			remote := scanner.GetModel(m.FullModelName())
 			if remote == nil {
-				err = fmt.Errorf("%s model %s not found", m.ScannerName, m.ModelName)
+				err = fmt.Errorf("%s model %s not found", m.ModelSource, m.FullModelName())
 			} else {
 				err = this.QApp.LocalModels.DownloadModel(remote)
 			}
 		}
 		fyne.Do(func() {
-			this.finishModelDownload(m.ModelName, err)
+			this.finishModelDownload(m.FullModelName(), err)
 		})
 	}()
 }

@@ -33,48 +33,75 @@ func (this *LocalAiScanner) GetModel(modelName string) *definitions.RemoteModel 
 	if err != nil {
 		return nil
 	}
-	llamaCppModelsDirectory := path.Join(homeDir, ".localai", "models", "llama-cpp", "models")
-	modelDir := path.Join(llamaCppModelsDirectory, modelName)
-	modelFile := definitions.SingleFileContents(modelDir)
-	if modelFile != "" && strings.HasSuffix(modelFile, ".gguf") {
-		return &definitions.RemoteModel{
-			ModelName:    modelName,
-			ModelType:    "gguf",
-			ModelFile:    path.Join(modelDir, modelFile),
-			ScannerName:  this.ScannerName(),
-			MetadataFile: "", // not from a metadata file, so leave it empty
-		}
-	}
-	return nil
+	modelDir := path.Join(this.modelsRoot(homeDir), modelName)
+	return this.scanModelDir(modelDir, modelName)
 }
 
 // ScanForModels implements [definitions.ModelScanner].
 func (this *LocalAiScanner) ScanForModels() ([]definitions.RemoteModel, error) {
-	models := make([]definitions.RemoteModel, 0)
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	llamaCppModelsDirectory := path.Join(homeDir, ".localai", "models", "llama-cpp", "models")
-	dirEntries, err := os.ReadDir(llamaCppModelsDirectory)
+	root := this.modelsRoot(homeDir)
+	dirEntries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+
+	models := make([]definitions.RemoteModel, 0)
 	for _, dir := range dirEntries {
-		modelDir := path.Join(llamaCppModelsDirectory, dir.Name())
-		modelFile := definitions.SingleFileContents(modelDir)
-		if modelFile != "" && strings.HasSuffix(modelFile, ".gguf") {
-			models = append(models, definitions.RemoteModel{
-				ModelName:    dir.Name(),
-				ModelType:    "gguf",
-				ModelFile:    path.Join(modelDir, modelFile),
-				ScannerName:  this.ScannerName(),
-				MetadataFile: "",
-			})
+		if !dir.IsDir() {
+			continue
+		}
+		if m := this.scanModelDir(path.Join(root, dir.Name()), dir.Name()); m != nil {
+			models = append(models, *m)
 		}
 	}
 	return models, nil
+}
+
+// modelsRoot returns the directory the scanner looks for models in.
+func (this *LocalAiScanner) modelsRoot(homeDir string) string {
+	return path.Join(homeDir, ".localai", "models", "llama-cpp", "models")
+}
+
+// scanModelDir builds the RemoteModel for the model stored in modelDir:
+// every .gguf file in the directory is one of the model's variants. A
+// directory without a single one holds no runnable model and yields nil.
+func (this *LocalAiScanner) scanModelDir(modelDir, modelName string) *definitions.RemoteModel {
+	entries, err := os.ReadDir(modelDir)
+	if err != nil {
+		return nil
+	}
+
+	variants := make([]definitions.ModelVariant, 0)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".gguf") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		variants = append(variants, definitions.ModelVariant{
+			FileName: entry.Name(),
+			Location: path.Join(modelDir, entry.Name()),
+			FileSize: info.Size(),
+		})
+	}
+	if len(variants) == 0 {
+		return nil
+	}
+
+	return &definitions.RemoteModel{
+		ModelFamily: definitions.NoneFamily,
+		ModelName:   modelName,
+		ModelSource: this.ScannerName(),
+		ModelType:   string(definitions.ModelTypeGGUF),
+		Variants:    variants,
+	}
 }

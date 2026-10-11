@@ -54,7 +54,7 @@ func New() *QApp {
 // long as that run lives, so AwaitAll can later wait for it (and any other
 // started models) to finish.
 func (this *QApp) Start(backend backendDefinitions.Backend, model *modelDefinitions.Model) *sync.WaitGroup {
-	fmt.Printf("Starting %s on %s\n", model.ModelName, backend.Id())
+	fmt.Printf("Starting %s on %s\n", model.FullModelName(), backend.Id())
 	this.allRunsWaitGroup.Add(1)
 	singleAwaitGroup := new(sync.WaitGroup)
 	singleAwaitGroup.Add(1)
@@ -68,7 +68,7 @@ func (this *QApp) Start(backend backendDefinitions.Backend, model *modelDefiniti
 			waitForStart.Done()
 			// The run lives in its own goroutine, so a failure can't be
 			// returned to the caller; report it here instead.
-			log.Printf("app: running %s failed: %v", model.ModelName, err)
+			log.Printf("app: running %s failed: %v", model.FullModelName(), err)
 			// Bail out before tracking: a failed Start has no running
 			// model to track, and a nil in the registry would panic the
 			// callers of Names()/RunningModels().
@@ -81,7 +81,7 @@ func (this *QApp) Start(backend backendDefinitions.Backend, model *modelDefiniti
 		// we have started, allow parent 'Start' function to complete
 		waitForStart.Done()
 
-		fmt.Printf("Started model %s on %s\n", model.ModelName, backend.Id())
+		fmt.Printf("Started model %s on %s\n", model.FullModelName(), backend.Id())
 		// now the goroutine waits, to make sure that 'on finish' events
 		// (stopTracking and wait groups) trigger correctly
 		runningModel.Wait()

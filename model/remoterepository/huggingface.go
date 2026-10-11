@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"slices"
+	"path"
 	"strings"
 	"time"
 
@@ -55,12 +55,14 @@ type hfModel struct {
 	Likes       int      `json:"likes"`
 	PipelineTag string   `json:"pipeline_tag"`
 	Tags        []string `json:"tags"`
+	License     string   `json:"license"`
 }
 
 // hfTreeFile is one entry of the HuggingFace tree API response.
 type hfTreeFile struct {
 	Type string `json:"type"`
 	Path string `json:"path"`
+	Size int64  `json:"size"`
 }
 
 // HuggingFaceScanner scans the HuggingFace model hub for models.
@@ -77,39 +79,23 @@ func (this *HuggingFaceScanner) ScannerName() string {
 }
 
 // GetModel implements [definitions.ModelScanner]. It verifies that a model
-// with the given id exists on the hub and, for GGUF releases, locates the
-// model's first GGUF file so a link can record where it lives.
+// with the given id exists on the hub and lists its GGUF files (its
+// variants) and its licence, so an install can fetch them. It returns nil
+// when the model does not exist, or when it holds no runnable variants.
 func (this *HuggingFaceScanner) GetModel(modelName string) *definitions.RemoteModel {
 	m, err := this.getModel(modelName)
 	if err != nil {
 		// the model does not exist (or the hub is unreachable); either way
-		// there is nothing to link
+		// there is nothing to install
 		return nil
 	}
-
-	modelType := "hf"
-	modelFile := m.repoURL()
-	if slices.Contains(m.Tags, "gguf") {
-		modelType = "gguf"
-		if file, err := this.firstGgufFile(m.ID); err == nil {
-			modelFile = m.resolveURL(file)
-		}
-	}
-
-	return &definitions.RemoteModel{
-		Model: definitions.Model{
-			ModelName: m.ID,
-			ModelType: modelType,
-			ModelFile: modelFile,
-		},
-		ScannerName:  this.ScannerName(),
-		MetadataFile: "",
-	}
+	return this.toRemoteModel(*m)
 }
 
 // ScanForModels implements [definitions.ModelScanner]. It runs each hard
 // coded filter option against the hub API and merges the results, dropping
-// models that more than one option returns.
+// models that more than one option returns. Models without a single GGUF
+// file (no runnable variants) are trimmed from the results.
 func (this *HuggingFaceScanner) ScanForModels() ([]definitions.RemoteModel, error) {
 	models := make([]definitions.RemoteModel, 0)
 	seen := make(map[string]bool)
@@ -123,29 +109,81 @@ func (this *HuggingFaceScanner) ScanForModels() ([]definitions.RemoteModel, erro
 				continue
 			}
 			seen[m.ID] = true
-			models = append(models, this.toRemoteModel(m))
+			if remote := this.toRemoteModel(m); remote != nil {
+				models = append(models, *remote)
+			}
 		}
 	}
 	return models, nil
 }
 
-// toRemoteModel maps a hub model to the scanner's RemoteModel. The model
-// file is the model's hub page; linking via [GetModel] refines it to an
-// actual file when one can be found.
-func (this *HuggingFaceScanner) toRemoteModel(m hfModel) definitions.RemoteModel {
-	modelType := "hf"
-	if slices.Contains(m.Tags, "gguf") {
-		modelType = "gguf"
+// toRemoteModel maps a hub model to the scanner's RemoteModel: its family
+// and name come from the model's id, and its variants are the model's GGUF
+// files (listed from the repository's tree, with their sizes). A model
+// without a single GGUF file has no runnable variants and is reported as
+// nil, so it can be trimmed from listings.
+func (this *HuggingFaceScanner) toRemoteModel(m hfModel) *definitions.RemoteModel {
+	variants, licencePath := this.variantsFromTree(m)
+	if len(variants) == 0 {
+		return nil
 	}
-	return definitions.RemoteModel{
-		Model: definitions.Model{
-			ModelName: m.ID,
-			ModelType: modelType,
-			ModelFile: m.repoURL(),
-		},
-		ScannerName:  this.ScannerName(),
-		MetadataFile: "",
+
+	remote := &definitions.RemoteModel{
+		ModelFamily: "",
+		ModelName:   "",
+		ModelSource: this.ScannerName(),
+		ModelType:   string(definitions.ModelTypeGGUF),
+		Variants:    variants,
+		LicenceName: m.License,
 	}
+	remote.ModelFamily, remote.ModelName = definitions.SplitModelName(m.ID)
+	if licencePath != "" {
+		remote.LicenceFile = m.resolveURL(licencePath)
+	}
+	return remote
+}
+
+// variantsFromTree lists the model's variants (its GGUF files) and its
+// licence file, from the model's repository tree.
+func (this *HuggingFaceScanner) variantsFromTree(m hfModel) ([]definitions.ModelVariant, string) {
+	files, err := this.treeFiles(m.ID)
+	if err != nil {
+		// without the tree there is no way to list the model's variants
+		return nil, ""
+	}
+
+	variants := make([]definitions.ModelVariant, 0)
+	licencePath := ""
+	for _, f := range files {
+		if f.Type != "file" {
+			continue
+		}
+		if strings.HasSuffix(f.Path, ".gguf") {
+			variants = append(variants, definitions.ModelVariant{
+				FileName: path.Base(f.Path),
+				Location: m.resolveURL(f.Path),
+				FileSize: f.Size,
+			})
+			continue
+		}
+		if licencePath == "" && isLicenceFile(f.Path) {
+			licencePath = f.Path
+		}
+	}
+	return variants, licencePath
+}
+
+// isLicenceFile reports whether a repository path is the repository's
+// licence file: a LICENSE or COPYING file in the repository root.
+func isLicenceFile(p string) bool {
+	if path.Dir(p) != "." {
+		return false // only the repository root: a nested licence is not the model's
+	}
+	switch strings.ToUpper(path.Base(p)) {
+	case "LICENSE", "LICENSE.MD", "LICENSE.TXT", "COPYING", "COPYING.MD":
+		return true
+	}
+	return false
 }
 
 // repoURL returns the hub URL of the model's page.
@@ -205,28 +243,23 @@ func (this *HuggingFaceScanner) getModel(modelName string) (*hfModel, error) {
 	return &m, nil
 }
 
-// firstGgufFile returns the path of the first GGUF file in the model's
-// default branch.
-func (this *HuggingFaceScanner) firstGgufFile(modelID string) (string, error) {
-	u := fmt.Sprintf("%s/api/models/%s/tree/main", hfBaseURL, modelID)
+// treeFiles fetches the files in the model's default branch, walked
+// recursively, so GGUF files nested in subdirectories are found too.
+func (this *HuggingFaceScanner) treeFiles(modelID string) ([]hfTreeFile, error) {
+	u := fmt.Sprintf("%s/api/models/%s/tree/main?recursive=true", hfBaseURL, modelID)
 	resp, err := hfClient.Get(u)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("model %s: tree: unexpected status %d", modelID, resp.StatusCode)
+		return nil, fmt.Errorf("model %s: tree: unexpected status %d", modelID, resp.StatusCode)
 	}
 
 	var files []hfTreeFile
 	if err := json.NewDecoder(resp.Body).Decode(&files); err != nil {
-		return "", err
+		return nil, err
 	}
-	for _, f := range files {
-		if f.Type == "file" && strings.HasSuffix(f.Path, ".gguf") {
-			return f.Path, nil
-		}
-	}
-	return "", fmt.Errorf("model %s: no GGUF files found", modelID)
+	return files, nil
 }

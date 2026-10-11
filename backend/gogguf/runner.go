@@ -37,7 +37,7 @@ func startGoggufServer(m *modelDefinitions.Model) (runnerDefinitions.RunningMode
 	// stop and error events are visible even when no GUI is watching the
 	// log viewer.
 	logger := log.New(io.MultiWriter(logs.Writer(), os.Stdout), providerId+": ", 0)
-	logger.Printf("starting %s (runtime %s)", m.ModelName, builtInVersion)
+	logger.Printf("starting %s (runtime %s)", m.FullModelName(), builtInVersion)
 	logger.Printf("loading model %s", m.ModelFile)
 
 	// LoadMapped reads the weights through an mmap (zero-copy); this is the
@@ -59,7 +59,7 @@ func startGoggufServer(m *modelDefinitions.Model) (runnerDefinitions.RunningMode
 	}
 
 	g := &goggufRunningModel{
-		modelName:      m.ModelName,
+		modelName:      m.FullModelName(),
 		runtimeVersion: builtInVersion,
 		startedAt:      time.Now(),
 		logs:           logs,

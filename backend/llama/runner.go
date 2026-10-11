@@ -52,5 +52,5 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 		fmt.Printf("Error Starting: %v\n", err)
 		return nil, err
 	}
-	return runnerDefinitions.RunDetailsFromCmd(cmd, m.ModelName, providerId, version, logs), err
+	return runnerDefinitions.RunDetailsFromCmd(cmd, m.FullModelName(), providerId, version, logs), err
 }

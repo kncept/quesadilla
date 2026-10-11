@@ -110,9 +110,9 @@ func (this *QGUI) updateModelCell(m modelDefinitions.Model, id widget.TableCellI
 
 // modelActionButton builds the start/stop button for a model's table row.
 func (this *QGUI) modelActionButton(m modelDefinitions.Model) *widget.Button {
-	if isRunning(m.ModelName) {
+	if isRunning(m.FullModelName()) {
 		return widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
-			this.stopModel(m.ModelName)
+			this.stopModel(m.FullModelName())
 		})
 	}
 	return widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), func() {
@@ -137,11 +137,11 @@ func (this *QGUI) modelDeleteButton(m modelDefinitions.Model) *widget.Button {
 // lines to show.
 func (this *QGUI) modelLogsButton(m modelDefinitions.Model) *widget.Button {
 	button := widget.NewButtonWithIcon("Logs", theme.FileTextIcon(), func() {
-		if running := runningModelFor(m.ModelName); running != nil {
+		if running := runningModelFor(m.FullModelName()); running != nil {
 			this.showLogs(running)
 		}
 	})
-	if runningModelFor(m.ModelName) == nil {
+	if runningModelFor(m.FullModelName()) == nil {
 		button.Disable()
 	}
 	return button
@@ -157,10 +157,10 @@ func (this *QGUI) confirmDeleteModel(m modelDefinitions.Model) {
 	if win == nil {
 		return
 	}
-	message := fmt.Sprintf("Delete model %q?\n\nThis removes the model and its files, and cannot be undone.", m.ModelName)
+	message := fmt.Sprintf("Delete model %q?\n\nThis removes the model and its files, and cannot be undone.", m.FullModelName())
 	dialog.NewConfirm("Delete Model", message, func(confirmed bool) {
 		if confirmed {
-			this.deleteModel(m.ModelName)
+			this.deleteModel(m.FullModelName())
 		}
 	}, win).Show()
 }
@@ -192,7 +192,7 @@ func runningModelFor(modelName string) runnerDefinitions.RunningModel {
 // serve its type. The run is tracked in the process-wide registry, so the
 // pages and the tray pick it up on their next refresh.
 func (this *QGUI) startModel(m *modelDefinitions.Model) {
-	fmt.Printf("startModel %s\n", m.ModelName)
+	fmt.Printf("startModel %s\n", m.FullModelName())
 	backend := this.QApp.Backends.BackendForModelType(m.ModelType)
 	if backend == nil {
 		this.notifyError(fmt.Sprintf("no installed backend can run %s models - install one first", m.ModelType))
@@ -212,11 +212,11 @@ func (this *QGUI) stopModel(modelName string) {
 func modelCell(m modelDefinitions.Model, col int) string {
 	switch col {
 	case 1:
-		return m.ModelName
+		return m.FullModelName()
 	case 2:
 		return m.ModelType
 	case 3:
-		if isRunning(m.ModelName) {
+		if isRunning(m.FullModelName()) {
 			return "running"
 		}
 		return "idle"

@@ -165,12 +165,12 @@ func main() {
 		installedModelsByName := make(map[string]bool)
 		availableModels := qApp.LocalModels.Models()
 		for _, m := range availableModels {
-			installedModelsByName[m.ModelName] = true
+			installedModelsByName[m.FullModelName()] = true
 		}
 
-		fmt.Printf("LinkID\tLinked\tName\n")
+		fmt.Printf("LinkID\tLinked\tName\tVariants\n")
 		for _, m := range scannedModels {
-			fmt.Printf("%s-%s\t%t\t%s\n", m.ScannerName, m.ModelName, installedModelsByName[m.ModelName], m.ModelName)
+			fmt.Printf("%s-%s\t%t\t%s\t%d\n", m.ModelSource, m.FullModelName(), installedModelsByName[m.FullModelName()], m.FullModelName(), len(m.Variants))
 			// fmt.Printf("%+v\n", model)
 		}
 	case "model list":
@@ -180,7 +180,7 @@ func main() {
 		} else {
 			fmt.Printf("Models:\n")
 			for _, model := range availableModels {
-				fmt.Printf("%s\n", model.ModelName)
+				fmt.Printf("%s\t(%d variant(s))\n", model.FullModelName(), len(model.Variants))
 			}
 		}
 	case "model link <link-id>":
