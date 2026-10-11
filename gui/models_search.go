@@ -149,41 +149,69 @@ func newSearchResultsTable(g *QGUI) *widget.Table {
 // searchResultsCellFactory builds a cell of the search-results table. The
 // cell needs a real layout: a bare &fyne.Container{} never lays out its
 // children, which leaves them at 0x0 - invisible and untappable. It also
-// needs a minimum size that fits the row's action buttons, because the table
-// sizes its rows from the template cell's minimum size; the seeded buttons
-// are only measured and never rendered (updateSearchResultCell replaces the
-// contents).
+// needs a minimum size that fits the widest row's action buttons, because the
+// table sizes its rows from the template cell's minimum size; the seeded
+// buttons are only measured and never rendered (updateSearchResultCell
+// replaces the contents).
 func searchResultsCellFactory() fyne.CanvasObject {
 	return container.NewHBox(
 		widget.NewButtonWithIcon("Link", theme.ContentCopyIcon(), nil),
-		widget.NewButtonWithIcon("Import", theme.DownloadIcon(), nil),
+		widget.NewButtonWithIcon("Install", theme.DownloadIcon(), nil),
 	)
 }
 
 // updateSearchResultCell fills one cell of the search-results table: the
 // model's actions in the first column, and a label for the data columns.
-// Models found by the filesystem scanner can be linked or imported, so their
-// row carries both buttons. Models found by the other scanners carry a
-// download (or copy) button, plus a button opening the model's page at its
-// source when the scanner knows of one.
+//
+// The actions differ by where the model came from:
+//
+//   - the filesystem scanner lists local files that can be linked into local
+//     storage or imported (copied) into it, so its rows carry both buttons;
+//   - the LocalAI scanner lists another application's local files, so its
+//     rows follow the link/install state machine (see addLocalScannerActions):
+//     a new model can be linked or installed, a linked one unlinked or
+//     installed, and an installed one uninstalled;
+//   - the remaining scanners list models to download, so their rows carry a
+//     download (or re-download) button, plus a button opening the model's
+//     page at its source when the scanner knows of one.
 func (this *QGUI) updateSearchResultCell(m modelDefinitions.RemoteModel, id widget.TableCellID, cell *fyne.Container) {
 	cell.RemoveAll()
-	if id.Col == 0 {
-		if m.ModelSource == remoterepository.FilesystemScannerName {
-			cell.Add(this.modelLinkButton(m))
-			cell.Add(this.modelImportButton(m))
-		} else {
-			cell.Add(this.modelDownloadButton(m))
-			if m.ModelURL != "" {
-				cell.Add(this.modelCardButton(m))
-			}
-		}
-	} else {
+	switch {
+	case id.Col != 0:
 		label := widget.NewLabel(searchResultCell(m, id.Col))
 		label.Wrapping = fyne.TextWrapOff
 		cell.Add(label)
+	case m.ModelSource == remoterepository.FilesystemScannerName:
+		cell.Add(this.modelLinkButton(m))
+		cell.Add(this.modelImportButton(m))
+	case m.ModelSource == remoterepository.LocalAiScannerName:
+		this.addLocalScannerActions(m, cell)
+	default:
+		cell.Add(this.modelDownloadButton(m))
+		if m.ModelURL != "" {
+			cell.Add(this.modelCardButton(m))
+		}
 	}
 	cell.Refresh()
+}
+
+// addLocalScannerActions fills the action cell for a model found by a scanner
+// whose models are local files owned by another application (LocalAI). A model
+// that is not installed locally can be linked into local storage or installed
+// (copied into it); a linked model can be unlinked, or installed to turn the
+// link into a local copy; an installed model can only be uninstalled.
+func (this *QGUI) addLocalScannerActions(m modelDefinitions.RemoteModel, cell *fyne.Container) {
+	local := this.QApp.LocalModels.GetModel(m.FullModelName())
+	switch {
+	case local == nil:
+		cell.Add(this.modelLinkButton(m))
+		cell.Add(this.modelInstallButton(m))
+	case local.IsLinked():
+		cell.Add(this.modelUnlinkButton(*local))
+		cell.Add(this.modelInstallButton(m))
+	default:
+		cell.Add(this.modelUninstallButton(*local))
+	}
 }
 
 // modelLinkButton builds the "Link" button for a filesystem search result's
@@ -202,11 +230,36 @@ func (this *QGUI) modelImportButton(m modelDefinitions.RemoteModel) *widget.Butt
 	})
 }
 
-// modelCardButton builds the "Link" button shown to the right of a remote
-// model's download button: it opens the model's page (eg its card on a model
-// hub) in the system browser.
+// modelInstallButton builds the "Install" button for a model found as local
+// files (LocalAI): it copies the model's files into local storage, turning a
+// new model or an existing link into a local copy.
+func (this *QGUI) modelInstallButton(m modelDefinitions.RemoteModel) *widget.Button {
+	return widget.NewButtonWithIcon("Install", theme.DownloadIcon(), func() {
+		this.installModel(m, installInstall)
+	})
+}
+
+// modelUnlinkButton builds the "Unlink" button for a linked LocalAI model: it
+// drops the model from local storage without touching the source files.
+func (this *QGUI) modelUnlinkButton(m modelDefinitions.Model) *widget.Button {
+	return widget.NewButtonWithIcon("Unlink", theme.DeleteIcon(), func() {
+		this.removeLocalModel(m, installUnlink)
+	})
+}
+
+// modelUninstallButton builds the "Uninstall" button for a LocalAI model whose
+// files are stored locally: it removes the model and its files.
+func (this *QGUI) modelUninstallButton(m modelDefinitions.Model) *widget.Button {
+	return widget.NewButtonWithIcon("Uninstall", theme.DeleteIcon(), func() {
+		this.removeLocalModel(m, installUninstall)
+	})
+}
+
+// modelCardButton builds the button, to the right of a remote model's download
+// button, that opens the model's page (eg its card on a model hub) in the
+// system browser.
 func (this *QGUI) modelCardButton(m modelDefinitions.RemoteModel) *widget.Button {
-	return widget.NewButtonWithIcon("Link", theme.ComputerIcon(), func() {
+	return widget.NewButtonWithIcon("Open", theme.ComputerIcon(), func() {
 		this.openModelCard(m.ModelURL)
 	})
 }
@@ -352,11 +405,12 @@ func (this *QGUI) finishModelSearch(models []modelDefinitions.RemoteModel, err e
 	this.searchRunning = false
 }
 
-// modelInstallAction names what installing a scanned model will do, so the
+// modelInstallAction names what acting on a scanned model will do, so the
 // status messages ("Downloading...", "Downloaded ...", "Download failed: ...")
 // can be built for each action.
 type modelInstallAction struct {
-	// verb is the action's present-tense name: "Download", "Import" or "Link".
+	// verb is the action's present-tense name: "Download", "Import", "Link",
+	// "Install", "Unlink" or "Uninstall".
 	verb string
 	// link installs the model by pointing at its source files, rather than
 	// copying them into local storage.
@@ -364,9 +418,12 @@ type modelInstallAction struct {
 }
 
 var (
-	installDownload = modelInstallAction{verb: "Download"}
-	installImport   = modelInstallAction{verb: "Import"}
-	installLink     = modelInstallAction{verb: "Link", link: true}
+	installDownload  = modelInstallAction{verb: "Download"}
+	installImport    = modelInstallAction{verb: "Import"}
+	installInstall   = modelInstallAction{verb: "Install"}
+	installLink      = modelInstallAction{verb: "Link", link: true}
+	installUnlink    = modelInstallAction{verb: "Unlink"}
+	installUninstall = modelInstallAction{verb: "Uninstall"}
 )
 
 // downloadModel downloads (or copies, for local sources) the named scanned
@@ -416,16 +473,35 @@ func (this *QGUI) installModel(m modelDefinitions.RemoteModel, action modelInsta
 			}
 		}
 		fyne.Do(func() {
-			this.finishModelInstall(action, m.FullModelName(), err)
+			this.finishModelAction(action, m.FullModelName(), err)
 		})
 	}()
 }
 
-// finishModelInstall applies the outcome of a model install to the screen:
-// the status label, and a refresh of the search-results table (so the button
-// reads "Redownload" once the model is installed) and of the installed-models
-// table (so the model appears on the Models screen).
-func (this *QGUI) finishModelInstall(action modelInstallAction, modelName string, err error) {
+// removeLocalModel drops an already-installed (or linked) local model,
+// according to action: unlinking keeps the source files and only removes the
+// stored link, while uninstalling removes the model's local files too. The
+// work runs in the background, with the spinner and the status label showing
+// progress.
+func (this *QGUI) removeLocalModel(m modelDefinitions.Model, action modelInstallAction) {
+	this.downloadsInFlight++
+	this.searchSpinner.Show()
+	this.searchStatusLabel.Show()
+	this.searchStatusLabel.SetText(fmt.Sprintf("%sing %s...", action.verb, m.FullModelName()))
+
+	go func() {
+		err := this.QApp.LocalModels.RemoveModel(m.FullModelName())
+		fyne.Do(func() {
+			this.finishModelAction(action, m.FullModelName(), err)
+		})
+	}()
+}
+
+// finishModelAction applies the outcome of an install or removal to the
+// screen: the status label, and a refresh of the search-results table (so the
+// row's buttons reflect the new state) and of the installed-models table (so
+// the model appears on the Models screen).
+func (this *QGUI) finishModelAction(action modelInstallAction, modelName string, err error) {
 	if this.downloadsInFlight > 0 {
 		this.downloadsInFlight--
 	}

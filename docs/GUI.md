@@ -69,10 +69,16 @@ selecting one runs its search and lists the results in a table on the right.
 
 Results carry action buttons in the first column:
 
-- Models from HuggingFace and LocalAI have the usual **Download** button, and
-  HuggingFace models also have a **Link** button to the right that opens the
-  model's card in the system browser.
-- Filesystem models have a **Link** button, which installs the model by
+- **HuggingFace** models have the usual **Download** (or **Redownload**)
+  button, plus an **Open** button to its right that opens the model's card in
+  the system browser.
+- **LocalAI** models follow their link/install state: a model that is not
+  installed locally shows **Link** (point at the localai files, copying
+  nothing) and **Install** (copy the files into quesadilla's data directory);
+  a linked model shows **Unlink** (drop the link, leaving the source files
+  alone) and **Install** (turn the link into a local copy); an installed model
+  shows only **Uninstall** (remove the model and its files).
+- **Filesystem** models have a **Link** button, which installs the model by
   pointing at its files where they are (nothing is copied), and an **Import**
   button, which copies the model's files into quesadilla's data directory like
   a normal download.

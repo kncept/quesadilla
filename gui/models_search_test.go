@@ -412,12 +412,12 @@ func TestModelSearchDownloadButtonLabels(t *testing.T) {
 	}
 }
 
-// TestModelSearchDownloadButtonTap verifies a real tap on the rendered
-// download button copies the model into local storage, reports the download
-// in the status label, and then the button reads "Redownload". This uses the
-// real (local, hermetic) LocalAI scanner, whose models are local files, so
-// the download is a copy.
-func TestModelSearchDownloadButtonTap(t *testing.T) {
+// TestModelSearchLocalAiInstallButtonTap verifies a real tap on the rendered
+// Install button for a new LocalAI model copies the model into local storage,
+// reports the install in the status label, and then the row's only action is
+// Uninstall. This uses the real (local, hermetic) LocalAI scanner, so the
+// install is a copy.
+func TestModelSearchLocalAiInstallButtonTap(t *testing.T) {
 	test.NewApp()
 	g := CreateGui(nil, newTestQAppWithLocalAiModel(t, "tiny-llama"))
 	page := g.modelSearchPage()
@@ -428,25 +428,116 @@ func TestModelSearchDownloadButtonTap(t *testing.T) {
 	g.searchScannersList.Select(scannerRow(t, g, "LocalAI"))
 	waitForSearchFinish(t, g)
 
+	// a new local model can be linked or installed
 	buttons := findButtons(page, nil)
-	if len(buttons) != 1 {
-		t.Fatalf("found %d buttons in the rendered page, want 1", len(buttons))
+	if len(buttons) != 2 {
+		t.Fatalf("found %d buttons in the rendered page, want 2 (Link and Install)", len(buttons))
 	}
-	if got := buttons[0].Text; got != "Download" {
-		t.Fatalf("button text = %q, want Download", got)
+	if findButtonByText(buttons, "Link") == nil {
+		t.Error("expected a Link button on a new LocalAI row")
+	}
+	installButton := findButtonByText(buttons, "Install")
+	if installButton == nil {
+		t.Fatal("expected an Install button on a new LocalAI row")
 	}
 
-	tapButtonCenter(t, buttons[0])
+	tapButtonCenter(t, installButton)
 	waitForDownloadFinish(t, g)
 
-	if got := g.searchStatusLabel.Text; got != "Downloaded tiny-llama" {
-		t.Errorf("status = %q, want Downloaded tiny-llama", got)
+	if got := g.searchStatusLabel.Text; got != "Installed tiny-llama" {
+		t.Errorf("status = %q, want Installed tiny-llama", got)
 	}
 	if g.QApp.LocalModels.GetModel("tiny-llama") == nil {
-		t.Fatal("expected tiny-llama to be installed after the download")
+		t.Fatal("expected tiny-llama to be installed after the tap")
 	}
-	if button := tableCellButton(g.searchResultsTable, 0, 0); button == nil || button.Text != "Redownload" {
-		t.Errorf("button after the download = %v, want Redownload", tableCellObject(g.searchResultsTable, 0, 0))
+	// an installed model only offers Uninstall
+	buttons = tableCellButtons(g.searchResultsTable, 0, 0)
+	if len(buttons) != 1 || buttons[0].Text != "Uninstall" {
+		t.Errorf("buttons after the install = %v, want a single Uninstall", buttons)
+	}
+}
+
+// TestModelSearchLocalAiStates verifies the LocalAI row's actions follow the
+// model's link/install state: new shows Link and Install, linked shows Unlink
+// and Install, and installed shows only Uninstall. It also verifies a linked
+// model resolves through the link, and that linking leaves the source files in
+// place.
+func TestModelSearchLocalAiStates(t *testing.T) {
+	test.NewApp()
+	g := CreateGui(nil, newTestQAppWithLocalAiModel(t, "tiny-llama"))
+	page := g.modelSearchPage()
+
+	win := test.NewWindow(page)
+	win.Resize(fyne.NewSize(1000, 600))
+
+	g.searchScannersList.Select(scannerRow(t, g, "LocalAI"))
+	waitForSearchFinish(t, g)
+
+	cellButtons := func() map[string]bool {
+		names := map[string]bool{}
+		for _, b := range tableCellButtons(g.searchResultsTable, 0, 0) {
+			names[b.Text] = true
+		}
+		return names
+	}
+
+	// new: Link and Install
+	if got := cellButtons(); !got["Link"] || !got["Install"] || len(got) != 2 {
+		t.Fatalf("new model buttons = %v, want Link and Install", got)
+	}
+
+	// link it: Unlink and Install, and the model resolves as linked
+	linkButton := findButtonByText(findButtons(page, nil), "Link")
+	if linkButton == nil {
+		t.Fatal("expected a Link button on the new row")
+	}
+	tapButtonCenter(t, linkButton)
+	waitForDownloadFinish(t, g)
+
+	if got := g.searchStatusLabel.Text; got != "Linked tiny-llama" {
+		t.Errorf("status = %q, want Linked tiny-llama", got)
+	}
+	if got := cellButtons(); !got["Unlink"] || !got["Install"] || len(got) != 2 {
+		t.Errorf("linked model buttons = %v, want Unlink and Install", got)
+	}
+	local := g.QApp.LocalModels.GetModel("tiny-llama")
+	if local == nil || !local.IsLinked() {
+		t.Fatalf("expected tiny-llama to be linked, got %+v", local)
+	}
+
+	// install the linked model: the link becomes a local copy, so the row
+	// offers only Uninstall
+	installButton := findButtonByText(findButtons(page, nil), "Install")
+	if installButton == nil {
+		t.Fatal("expected an Install button on the linked row")
+	}
+	tapButtonCenter(t, installButton)
+	waitForDownloadFinish(t, g)
+
+	if got := cellButtons(); !got["Uninstall"] || len(got) != 1 {
+		t.Errorf("installed model buttons = %v, want a single Uninstall", got)
+	}
+	local = g.QApp.LocalModels.GetModel("tiny-llama")
+	if local == nil || local.IsLinked() {
+		t.Fatalf("expected tiny-llama to be installed (not linked), got %+v", local)
+	}
+
+	// uninstall it: back to Link and Install
+	uninstallButton := findButtonByText(findButtons(page, nil), "Uninstall")
+	if uninstallButton == nil {
+		t.Fatal("expected an Uninstall button on the installed row")
+	}
+	tapButtonCenter(t, uninstallButton)
+	waitForDownloadFinish(t, g)
+
+	if got := g.searchStatusLabel.Text; got != "Uninstalled tiny-llama" {
+		t.Errorf("status = %q, want Uninstalled tiny-llama", got)
+	}
+	if g.QApp.LocalModels.GetModel("tiny-llama") != nil {
+		t.Error("expected tiny-llama to be gone after the uninstall")
+	}
+	if got := cellButtons(); !got["Link"] || !got["Install"] || len(got) != 2 {
+		t.Errorf("buttons after the uninstall = %v, want Link and Install", got)
 	}
 }
 

@@ -15,6 +15,10 @@ import (
 // quesadilla model directory.
 var _ definitions.ModelScanner = (*LocalAiScanner)(nil)
 
+// LocalAiScannerName is the name the LocalAI scanner registers under and
+// reports its models as coming from.
+const LocalAiScannerName = "LocalAI"
+
 type LocalAiScanner struct{}
 
 // NewLocalAiScanner creates a new LocalAiScanner for discovering remote models.
@@ -24,7 +28,7 @@ func NewLocalAiScanner() *LocalAiScanner {
 
 // ScannerName implements [definitions.ModelScanner].
 func (this *LocalAiScanner) ScannerName() string {
-	return "LocalAI"
+	return LocalAiScannerName
 }
 
 // GetModel implements [definitions.ModelScanner].

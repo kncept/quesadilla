@@ -127,6 +127,21 @@ func (m Model) FullModelName() string {
 	return FullModelName(m.ModelFamily, m.ModelName)
 }
 
+// IsLinked reports whether the model's variants all point at files elsewhere
+// (a linked model), rather than being stored in the model's own directory. A
+// mixed model (some variants linked, some stored) counts as not linked.
+func (m Model) IsLinked() bool {
+	if len(m.Variants) == 0 {
+		return false
+	}
+	for _, v := range m.Variants {
+		if !v.LinkedModel {
+			return false
+		}
+	}
+	return true
+}
+
 // FullModelName returns the model's full name, "family/name" (see
 // [FullModelName]).
 func (m RemoteModel) FullModelName() string {

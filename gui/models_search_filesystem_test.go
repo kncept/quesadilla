@@ -277,7 +277,7 @@ func TestModelSearchFilesystemRunSearchError(t *testing.T) {
 }
 
 // TestModelSearchDownloadButtonOpensModelCard verifies a remote model with a
-// known page shows a Link button to the right of its download button, and a
+// known page shows an Open button to the right of its download button, and a
 // tap on it opens the model's page (routed through the openURL hook).
 func TestModelSearchDownloadButtonOpensModelCard(t *testing.T) {
 	test.NewApp()
@@ -310,30 +310,30 @@ func TestModelSearchDownloadButtonOpensModelCard(t *testing.T) {
 	g.searchScannersList.Select(scannerRow(t, g, "ZTest"))
 	waitForSearchFinish(t, g)
 
-	// row 0 has ModelURL: its actions are Download then Link; row 1 has no
+	// row 0 has ModelURL: its actions are Download then Open; row 1 has no
 	// ModelURL, so only Download.
 	buttons := tableCellButtons(g.searchResultsTable, 0, 0)
 	if len(buttons) != 2 {
-		t.Fatalf("row 0 buttons = %d, want 2 (Download and Link)", len(buttons))
+		t.Fatalf("row 0 buttons = %d, want 2 (Download and Open)", len(buttons))
 	}
 	if buttons[0].Text != "Download" {
 		t.Errorf("row 0 first button = %q, want Download", buttons[0].Text)
 	}
-	if buttons[1].Text != "Link" {
-		t.Errorf("row 0 second button = %q, want Link", buttons[1].Text)
+	if buttons[1].Text != "Open" {
+		t.Errorf("row 0 second button = %q, want Open", buttons[1].Text)
 	}
 	row1 := tableCellButtons(g.searchResultsTable, 1, 0)
 	if len(row1) != 1 || row1[0].Text != "Download" {
 		t.Errorf("row 1 buttons = %v, want a single Download", row1)
 	}
 
-	// a real tap on the rendered Link button opens the model card
+	// a real tap on the rendered Open button opens the model card
 	buttons = findButtons(page, nil)
-	linkButton := findButtonByText(buttons, "Link")
-	if linkButton == nil {
-		t.Fatal("expected a Link button in the rendered page")
+	openButton := findButtonByText(buttons, "Open")
+	if openButton == nil {
+		t.Fatal("expected an Open button in the rendered page")
 	}
-	tapButtonCenter(t, linkButton)
+	tapButtonCenter(t, openButton)
 	if opened != "https://huggingface.co/org/a" {
 		t.Errorf("opened URL = %q, want the model card URL", opened)
 	}
