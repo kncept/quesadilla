@@ -62,6 +62,29 @@ localhost:9934, over an OpenAI-compatible API:
   streams server-sent events
 - `POST /v1/completions` - OpenAI text completions from a raw prompt; also
   supports streaming
+- `POST /v1/responses` - the OpenAI Responses API, with tool (function) calling;
+  `"stream": true` streams its typed server-sent events
+
+#### Tool calling on `/v1/responses`
+
+llama-go has no native tool support, so this endpoint layers a small text
+protocol over ordinary role/content chat completions:
+
+- the tool schemas are advertised in a system message inside `<tools>`;
+- the model asks to call a tool by emitting a JSON object wrapped in
+  `<tool_call></tool_call>` (each call becomes a `function_call` output item);
+- tool results are fed back as a `<tool_response call_id="...">...</tool_response>`
+  message.
+
+This follows the convention popularised by Qwen/Hermes models, so an
+instruction-tuned model usually complies. It is an instruction-level protocol
+rather than grammar-constrained decoding, so a model may ignore it and return
+plain text instead; the endpoint returns whatever it produced. The endpoint
+implements a pragmatic subset of the Responses API: `input` (a string or an
+array of message/`function_call`/`function_call_output` items), `instructions`,
+`tools`, `tool_choice`, `max_output_tokens`, `temperature`, `top_p` and
+`stream`. `previous_response_id`, `store` and reasoning output items are not
+supported.
 
 Unlike the pure-Go backends this one is cgo: it links llama.cpp through
 llama-go, which cannot be used as a plain module dependency because its cgo

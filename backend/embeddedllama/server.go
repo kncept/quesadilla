@@ -29,3 +29,19 @@ func (s *statusRecorder) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
 }
+
+// Flush forwards to the wrapped writer, so streaming handlers still see an
+// http.Flusher through the request-logging wrapper. Without it the wrapper
+// hides the underlying flusher, every streaming handler's flusher type
+// assertion fails, and streamed replies turn into 500s.
+func (s *statusRecorder) Flush() {
+	if flusher, ok := s.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Unwrap returns the wrapped writer, letting http.ResponseController reach the
+// real connection through the wrapper.
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,5 +66,37 @@ func TestEmbeddedLlamaIntegration(t *testing.T) {
 	}
 	if info["version"] != builtInVersion {
 		t.Errorf("version = %v, want %q", info["version"], builtInVersion)
+	}
+
+	// POST /v1/responses should answer in the Responses API shape.
+	body := `{"model":"integration","input":"Say hello in one word."}`
+	req, err = http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://localhost:%d/v1/responses", servePort), strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /v1/responses: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/responses status = %d, want 200", resp.StatusCode)
+	}
+
+	var responses struct {
+		Object string `json:"object"`
+		Output []struct {
+			Type string `json:"type"`
+		} `json:"output"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&responses); err != nil {
+		t.Fatalf("decoding /v1/responses: %v", err)
+	}
+	if responses.Object != "response" {
+		t.Errorf("responses object = %q, want %q", responses.Object, "response")
+	}
+	if len(responses.Output) == 0 {
+		t.Error("responses output is empty, want at least one item")
 	}
 }

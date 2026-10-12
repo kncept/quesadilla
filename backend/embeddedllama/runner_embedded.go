@@ -104,6 +104,7 @@ func startEmbeddedLlamaServer(m *modelDefinitions.Model) (runnerDefinitions.Runn
 	mux.HandleFunc("/v1/models", g.handleModels)
 	mux.HandleFunc("/v1/chat/completions", g.handleChatCompletions)
 	mux.HandleFunc("/v1/completions", g.handleCompletions)
+	mux.HandleFunc("/v1/responses", g.handleResponses)
 	g.server = &http.Server{
 		Addr:              fmt.Sprintf("localhost:%d", servePort),
 		Handler:           requestLogger(logger, mux),
@@ -328,7 +329,7 @@ func (g *embeddedRunningModel) handleInfo(w http.ResponseWriter, r *http.Request
 		http.NotFound(w, r)
 		return
 	}
-	writeJSON(w, map[string]any{
+	g.writeJSON(w, map[string]any{
 		"provider":     providerId,
 		"model":        g.modelName,
 		"version":      g.runtimeVersion,
@@ -340,7 +341,7 @@ func (g *embeddedRunningModel) handleInfo(w http.ResponseWriter, r *http.Request
 // handleModels answers GET /v1/models with the served model, in OpenAI's list
 // shape.
 func (g *embeddedRunningModel) handleModels(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{
+	g.writeJSON(w, map[string]any{
 		"object": "list",
 		"data": []map[string]any{{
 			"id":       g.modelName,
@@ -390,11 +391,10 @@ func (g *embeddedRunningModel) handleChatCompletions(w http.ResponseWriter, r *h
 	started := time.Now()
 	resp, err := g.chat(r.Context(), messages, opts)
 	if err != nil {
-		g.logger.Printf("chat failed: %v", err)
-		http.Error(w, fmt.Sprintf("chat failed: %v", err), http.StatusInternalServerError)
+		g.httpError(w, r, http.StatusInternalServerError, "chat failed: %v", err)
 		return
 	}
-	writeJSON(w, chatCompletionResponse{
+	g.writeJSON(w, chatCompletionResponse{
 		ID:      newCompletionID("chatcmpl"),
 		Object:  "chat.completion",
 		Created: started.Unix(),
@@ -413,7 +413,7 @@ func (g *embeddedRunningModel) handleChatCompletions(w http.ResponseWriter, r *h
 func (g *embeddedRunningModel) streamChatCompletion(w http.ResponseWriter, r *http.Request, messages []llama.ChatMessage, opts llama.ChatOptions) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming is not supported by this connection", http.StatusInternalServerError)
+		g.httpError(w, r, http.StatusInternalServerError, "streaming is not supported by this connection")
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -450,7 +450,7 @@ func (g *embeddedRunningModel) streamChatCompletion(w http.ResponseWriter, r *ht
 				continue
 			}
 			if err != nil {
-				g.logger.Printf("chat stream failed: %v", err)
+				g.logger.Printf("error: %s %s: chat stream failed: %v", r.Method, r.URL.Path, err)
 			}
 		}
 	}
@@ -496,11 +496,10 @@ func (g *embeddedRunningModel) handleCompletions(w http.ResponseWriter, r *http.
 	text, err := g.ctx.Generate(req.Prompt, opts...)
 	g.runMu.Unlock()
 	if err != nil {
-		g.logger.Printf("completion failed: %v", err)
-		http.Error(w, fmt.Sprintf("completion failed: %v", err), http.StatusInternalServerError)
+		g.httpError(w, r, http.StatusInternalServerError, "completion failed: %v", err)
 		return
 	}
-	writeJSON(w, completionResponse{
+	g.writeJSON(w, completionResponse{
 		ID:      newCompletionID("cmpl"),
 		Object:  "text_completion",
 		Created: started.Unix(),
@@ -515,7 +514,7 @@ func (g *embeddedRunningModel) handleCompletions(w http.ResponseWriter, r *http.
 func (g *embeddedRunningModel) streamCompletion(w http.ResponseWriter, r *http.Request, prompt string, opts []llama.GenerateOption) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming is not supported by this connection", http.StatusInternalServerError)
+		g.httpError(w, r, http.StatusInternalServerError, "streaming is not supported by this connection")
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -546,7 +545,7 @@ func (g *embeddedRunningModel) streamCompletion(w http.ResponseWriter, r *http.R
 				continue
 			}
 			if err != nil {
-				g.logger.Printf("completion stream failed: %v", err)
+				g.logger.Printf("error: %s %s: completion stream failed: %v", r.Method, r.URL.Path, err)
 			}
 		}
 	}
@@ -618,10 +617,27 @@ func newCompletionID(prefix string) string {
 	return fmt.Sprintf("%s-%x", prefix, time.Now().UnixNano())
 }
 
-// writeJSON writes a JSON response.
-func writeJSON(w http.ResponseWriter, payload any) {
+// httpError logs why a request failed and then writes the error response.
+// Every server-side failure (5xx) goes through it, so the reason ends up on the
+// console and in the GUI log viewer instead of only in the response body.
+func (g *embeddedRunningModel) httpError(w http.ResponseWriter, r *http.Request, status int, format string, args ...any) {
+	message := fmt.Sprintf(format, args...)
+	g.logger.Printf("error: %s %s -> %d: %s", r.Method, r.URL.Path, status, message)
+	http.Error(w, message, status)
+}
+
+// writeJSON writes a JSON response. It encodes to memory first so an encoding
+// failure can be logged and reported as a 500, rather than silently truncating
+// the body.
+func (g *embeddedRunningModel) writeJSON(w http.ResponseWriter, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		g.logger.Printf("error: encoding JSON response: %v", err)
+		http.Error(w, fmt.Sprintf("encoding response: %v", err), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(payload)
+	_, _ = w.Write(data)
 }
 
 // writeSSE writes one server-sent event and flushes it.

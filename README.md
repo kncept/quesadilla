@@ -40,7 +40,8 @@ a GUI and a CLI.
   HTTP inference API on localhost:9933.
 - `embedded-llama` - runs GGUF models with llama.cpp compiled into the app,
   through the cgo bindings of github.com/tcpipuk/llama-go. Serves an
-  OpenAI-compatible HTTP API on localhost:9934. Like gogguf and onnx it has a
+  OpenAI-compatible HTTP API on localhost:9934, including a tool-calling
+  `/v1/responses` endpoint. Like gogguf and onnx it has a
   single `built-in` version (nothing to install). It is cgo, so it is present
   in every cgo build; pure-Go builds (CGO_ENABLED=0) still list the backend but
   cannot start a model. See [Backends](docs/BACKENDS.md) for the native library

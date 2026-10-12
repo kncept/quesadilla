@@ -1,6 +1,7 @@
 package embeddedllama
 
 import (
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -91,5 +92,27 @@ func TestRequestLoggerCapturesLines(t *testing.T) {
 		if !strings.Contains(line, want) {
 			t.Errorf("log line %q missing %q", line, want)
 		}
+	}
+}
+
+// TestRequestLoggerPreservesFlusher guards the streaming handlers: they assert
+// the ResponseWriter is an http.Flusher, and the logging wrapper must not hide
+// it. If it does, every streamed request fails with a 500 instead of streaming.
+func TestRequestLoggerPreservesFlusher(t *testing.T) {
+	var inner http.ResponseWriter
+	handler := requestLogger(log.New(io.Discard, "", 0), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inner = w
+	}))
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "http://localhost/v1/responses", nil))
+
+	if inner == nil {
+		t.Fatal("handler was not called")
+	}
+	if _, ok := inner.(http.Flusher); !ok {
+		t.Errorf("wrapped writer %T does not implement http.Flusher: streaming handlers will 500", inner)
+	}
+	if _, ok := inner.(interface{ Unwrap() http.ResponseWriter }); !ok {
+		t.Errorf("wrapped writer %T does not implement Unwrap", inner)
 	}
 }
