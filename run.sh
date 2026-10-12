@@ -8,35 +8,32 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# Supported OS/ARCH combos for the CLI (pure Go, built with CGO disabled)
-CLI_TARGETS=(
-  "linux/amd64"
-  "linux/arm64"
-  "darwin/amd64"
-  "darwin/arm64"
-  "windows/amd64"
-)
-
-# Build the CLI for every supported OS/ARCH into .build/cli/
+# Build the CLI for the current host into .build/cli/.
+# The CLI is pure Go (built with CGO disabled), but it is only built for the
+# host platform; the binary keeps the quesadilla-cli_<os>_<arch> naming.
 build_cli() {
-  echo "Building CLI for supported OS/ARCH..."
+  local goos goarch
+  goos="$(current_goos)"
+  goarch="$(current_goarch)"
+
+  if [ "${goos}" = "unknown" ] || [ "${goarch}" = "unknown" ]; then
+    echo "Error: cannot detect host platform for build:cli (got ${goos}/${goarch})" >&2
+    return 1
+  fi
+
+  local suffix=""
+  if [ "${goos}" = "windows" ]; then
+    suffix=".exe"
+  fi
+
   local out_dir=".build/cli"
+  local out_name="quesadilla-cli_${goos}_${goarch}${suffix}"
+  echo "Building ${out_name}..."
   mkdir -p "${out_dir}"
+  CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
+    go build -o "${out_dir}/${out_name}" ./cmd/cli
 
-  for target in "${CLI_TARGETS[@]}"; do
-    local go_os="${target%%/*}"
-    local go_arch="${target##*/}"
-    local suffix=""
-    if [ "${go_os}" = "windows" ]; then
-      suffix=".exe"
-    fi
-    local out_name="quesadilla-cli_${go_os}_${go_arch}${suffix}"
-    echo "Building ${out_name}..."
-    CGO_ENABLED=0 GOOS="${go_os}" GOARCH="${go_arch}" \
-      go build -o "${out_dir}/${out_name}" ./cmd/cli
-  done
-
-  echo "CLI builds complete in ${out_dir}/"
+  echo "CLI build complete in ${out_dir}/"
 }
 
 # Build the macOS GUI into a .app bundle at .build/macos/Quesadilla.app.
@@ -113,6 +110,77 @@ EOF
   echo "macOS GUI build complete: ${app_dir} (open it with 'open ${app_dir}')"
 }
 
+# Map the current host to a Go GOOS.
+current_goos() {
+  case "$(uname -s)" in
+    Darwin) echo "darwin" ;;
+    Linux) echo "linux" ;;
+    *MINGW*|*MSYS*|*CYGWIN*) echo "windows" ;;
+    *) echo "unknown" ;;
+  esac
+}
+
+# Map the current host to a GOARCH.
+current_goarch() {
+  case "$(uname -m)" in
+    arm64|aarch64) echo "arm64" ;;
+    x86_64|amd64) echo "amd64" ;;
+    *) echo "unknown" ;;
+  esac
+}
+
+# Install the native libraries Fyne needs to build on macOS.
+# Fyne links against AppKit through cgo, which needs the Xcode command line
+# tools (they also provide iconutil, used for the .app icon).
+dependencies_macos() {
+  if xcode-select -p >/dev/null 2>&1; then
+    echo "Xcode command line tools already installed: $(xcode-select -p)"
+    return 0
+  fi
+
+  echo "Installing Xcode command line tools (required to build the Fyne GUI)..."
+  xcode-select --install || true
+  echo "Re-run './run.sh dependencies' once the installation finishes."
+}
+
+# Install the native libraries Fyne needs to build on Linux: a C compiler plus
+# the OpenGL, X11, xkbcommon and Wayland development headers (GLFW needs the
+# Wayland headers even for its X11 backend).
+dependencies_linux() {
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "Installing Fyne build dependencies with apt-get..."
+    sudo apt-get update
+    sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev libwayland-dev
+  elif command -v dnf >/dev/null 2>&1; then
+    echo "Installing Fyne build dependencies with dnf..."
+    sudo dnf install -y gcc libXcursor-devel libXrandr-devel mesa-libGL-devel \
+      libXi-devel libXinerama-devel libXxf86vm-devel libxkbcommon-devel wayland-devel
+  elif command -v pacman >/dev/null 2>&1; then
+    echo "Installing Fyne build dependencies with pacman..."
+    sudo pacman -S --noconfirm --needed gcc libx11 libxcursor libxrandr \
+      libxinerama libxi libxxf86vm mesa libxkbcommon wayland
+  else
+    echo "Error: no supported package manager found (apt-get, dnf, or pacman)." >&2
+    echo "Install a C compiler plus the OpenGL/X11/xkbcommon/Wayland development headers." >&2
+    return 1
+  fi
+}
+
+# Install the native build dependencies for the current platform by
+# dispatching to the matching dependencies:<os> command.
+dependencies() {
+  local goos
+  goos="$(current_goos)"
+  case "${goos}" in
+    darwin) (dependencies_macos) ;;
+    linux) (dependencies_linux) ;;
+    *)
+      echo "Error: unsupported host for dependencies: ${goos}" >&2
+      return 1
+      ;;
+  esac
+}
+
 # Build every target
 build() {
   build_cli
@@ -136,12 +204,15 @@ help() {
 Usage: ./run.sh <command>
 
 Commands:
-  help         Show this help message
-  build        Build every target (CLI for all supported OS/ARCH, macOS GUI for the host)
-  build:cli    Build the CLI for every supported OS/ARCH into .build/cli/
-  build:macos  Build the macOS GUI into .build/macos/Quesadilla.app (requires macOS)
-  test         Run go tests (go test ./...)
-  clean        Remove generated files (.build/) and .DS_Store files
+  help                 Show this help message
+  dependencies         Install the native build dependencies for the host (autoselects the OS)
+  dependencies:macos   Install the native build dependencies for macOS (Xcode command line tools)
+  dependencies:linux   Install the native build dependencies for Linux (gcc + OpenGL/X11/xkbcommon/Wayland headers)
+  build                Build every target (host CLI, macOS .app)
+  build:cli            Build the CLI for the current host into .build/cli/
+  build:macos          Build the macOS GUI into .build/macos/Quesadilla.app (requires macOS)
+  test                 Run go tests (go test ./...)
+  clean                Remove generated files (.build/) and .DS_Store files
 EOF
 }
 
@@ -155,6 +226,15 @@ case "${1:-}" in
     ;;
   build:macos)
     (build_macos)
+    ;;
+  dependencies)
+    (dependencies)
+    ;;
+  dependencies:macos)
+    (dependencies_macos)
+    ;;
+  dependencies:linux)
+    (dependencies_linux)
     ;;
   test)
     (test)

@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Run the same build on every runner; one failure must not hide the rest.
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - ubuntu-26.04-arm
+          - macos-latest
+          - macos-26-intel
+          - windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # run.sh owns setup: it installs the native Fyne dependencies for the OS.
+      - name: Install dependencies
+        run: ./run.sh dependencies
+
+      # The same build command on every runner: the CLI is built for the host
+      # platform only, plus the .app bundle on macOS.
+      - name: Build
+        run: ./run.sh build
+
+      # upload-artifact drops the executable bit (files come back 644), which
+      # would break the CLI binary and the .app bundle, so package them as
+      # tarballs first; tar preserves the permissions and the bundle layout.
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          tar -czf "dist/quesadilla-cli-${{ matrix.os }}.tar.gz" -C .build/cli .
+          if [ -d .build/macos ]; then
+            tar -czf "dist/quesadilla-app-${{ matrix.os }}.tar.gz" -C .build/macos .
+          fi
+
+      - name: Upload CLI binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: quesadilla-cli-${{ matrix.os }}
+          path: dist/quesadilla-cli-${{ matrix.os }}.tar.gz
+          if-no-files-found: error
+
+      - name: Upload macOS app
+        # macOS packages the Quesadilla.app bundle; other runners have no bundle.
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quesadilla-app-${{ matrix.os }}
+          path: dist/quesadilla-app-${{ matrix.os }}.tar.gz
+          if-no-files-found: error

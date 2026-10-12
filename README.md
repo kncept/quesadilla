@@ -19,8 +19,8 @@ open .build/macos/Quesadilla.app      # the macOS GUI (on a macOS host)
 ```
 
 That's all there is to it — nothing else to install. `./run.sh build` builds
-the CLI for every supported OS/ARCH into `.build/cli/`, and (on a macOS host)
-the macOS GUI as `.build/macos/Quesadilla.app`.
+the CLI for the host OS/ARCH into `.build/cli/`, and (on a macOS host) the
+macOS GUI as `.build/macos/Quesadilla.app`.
 
 ## Why?
 
