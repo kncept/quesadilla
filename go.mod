@@ -1,6 +1,6 @@
 module github.com/kncept/quesadilla
 
-go 1.27.1
+go 1.27.2
 
 require (
 	fyne.io/fyne/v2 v2.8.1
@@ -8,6 +8,7 @@ require (
 	github.com/magomedcoder/gogguf v0.0.0
 	github.com/owulveryck/onnx-go v0.5.0
 	github.com/postfinance/single v0.0.2
+	github.com/tcpipuk/llama-go v0.0.0-20261009125821-3b6c89e75117
 	gorgonia.org/tensor v0.9.3
 )
 
@@ -51,9 +52,9 @@ require (
 	github.com/xtgo/set v1.0.0 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
 	golang.org/x/image v0.24.0 // indirect
-	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	gonum.org/v1/gonum v0.0.0-20190902003836-43865b531bee // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorgonia.org/cu v0.9.0-beta // indirect
@@ -72,3 +73,11 @@ require (
 //   go mod edit -dropreplace=github.com/magomedcoder/gogguf
 //   go get github.com/magomedcoder/gogguf@latest
 replace github.com/magomedcoder/gogguf => github.com/nkrul/gogguf v0.0.0-20261009120658-d4478cfc9ab1
+
+// The embedded-llama backend links llama.cpp through llama-go. llama-go is
+// vendored under third_party/llama-go (a git submodule, pinned to the commit
+// in the require block above) so its llama.cpp static libraries can be built
+// in-repo and found by llama-go's `-L./` cgo link flags. Build it with:
+//   git submodule update --init --recursive
+//   ./run.sh build:llama
+replace github.com/tcpipuk/llama-go => ./third_party/llama-go

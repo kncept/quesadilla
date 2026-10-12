@@ -21,6 +21,7 @@ type's group:
   "backendOrder": [
     {"modelType": "gguf", "backendId": "llama-binary"},
     {"modelType": "gguf", "backendId": "gogguf"},
+    {"modelType": "gguf", "backendId": "embedded-llama"},
     {"modelType": "onnx", "backendId": "onnx"}
   ]
 }

@@ -8,10 +8,31 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# A fresh clone needs its submodules before any go command will run: go.mod
+# replaces github.com/tcpipuk/llama-go with third_party/llama-go, so that
+# submodule (and llama.cpp nested inside it) has to be checked out even for a
+# pure-Go build that never links it.
+#
+# This is the smart version of "git submodule update --init --recursive": it
+# only touches git when something is actually missing, so it is cheap to call
+# from the build, the test run and the dependencies command alike.
+ensure_submodules() {
+  # third_party/llama-go/go.mod proves the outer submodule is checked out;
+  # llama.cpp/CMakeLists.txt proves the nested one is too.
+  if [ -f "third_party/llama-go/go.mod" ] && [ -f "third_party/llama-go/llama.cpp/CMakeLists.txt" ]; then
+    return 0
+  fi
+
+  echo "Initialising submodules (third_party/llama-go and llama.cpp)..."
+  git submodule update --init --recursive
+}
+
 # Build the CLI for the current host into .build/cli/.
 # The CLI is pure Go (built with CGO disabled), but it is only built for the
 # host platform; the binary keeps the quesadilla-cli_<os>_<arch> naming.
 build_cli() {
+  ensure_submodules
+
   local goos goarch
   goos="$(current_goos)"
   goarch="$(current_goarch)"
@@ -36,6 +57,26 @@ build_cli() {
   echo "CLI build complete in ${out_dir}/"
 }
 
+# Build the llama.cpp static libraries that llama-go links against, inside the
+# third_party/llama-go submodule. The embedded-llama backend is cgo, so any cgo
+# build needs them. This is heavy (it builds llama.cpp with cmake) but only
+# needs running once per platform. See docs/BACKENDS.md.
+build_llama() {
+  ensure_submodules
+
+  echo "Building llama.cpp static libraries (third_party/llama-go)..."
+  # On macOS llama-go's link flags reference the Metal and Accelerate (BLAS)
+  # archives, which the Makefile only builds and copies with BUILD_TYPE=metal.
+  # Its Metal object rule still expects an older, single-file layout, but the
+  # archives already carry those symbols, so EXTRA_TARGETS is emptied to skip
+  # that stale rule while keeping the archive copy.
+  if [ "$(uname -s)" = "Darwin" ]; then
+    make -C third_party/llama-go BUILD_TYPE=metal EXTRA_TARGETS= libbinding.a
+  else
+    make -C third_party/llama-go libbinding.a
+  fi
+}
+
 # Build the macOS GUI into a .app bundle at .build/macos/Quesadilla.app.
 # The GUI uses cgo (fyne/glfw + AppKit) so it can only be built for the host,
 # on a macOS machine. The bundle icon (an avocado-green letter Q) is drawn by
@@ -45,6 +86,10 @@ build_macos() {
     echo "Skipping macOS GUI build (requires a macOS host)"
     return 0
   fi
+
+  # The GUI is a cgo build, so it embeds the cgo embedded-llama backend and
+  # needs llama.cpp's static libraries.
+  (build_llama)
 
   local host_arch
   case "$(uname -m)" in
@@ -190,8 +235,12 @@ dependencies_windows() {
 }
 
 # Install the native build dependencies for the current platform by
-# dispatching to the matching dependencies:<os> command.
+# dispatching to the matching dependencies:<os> command. This is also where the
+# fresh-clone submodule check lives, so `./run.sh dependencies` leaves the tree
+# ready for a build.
 dependencies() {
+  ensure_submodules
+
   local goos
   goos="$(current_goos)"
   case "${goos}" in
@@ -207,11 +256,19 @@ dependencies() {
 
 # Build every target
 build() {
+  # Checked here too so the fresh-clone submodule requirement is handled up
+  # front; ensure_submodules is a no-op once they are present.
+  ensure_submodules
+
   build_cli
   build_macos
 }
 
 test() {
+  # A cgo test binary links the embedded-llama backend, so the native
+  # libraries have to exist before `go test ./...`.
+  build_llama
+
   echo "Running tests..."
   go test ./...
 }
@@ -229,13 +286,14 @@ Usage: ./run.sh <command>
 
 Commands:
   help                 Show this help message
-  dependencies         Install the native build dependencies for the host (autoselects the OS)
+  dependencies         Install the native build dependencies for the host and fetch the llama-go/llama.cpp submodules
   dependencies:macos   Install the native build dependencies for macOS (Xcode command line tools)
   dependencies:linux   Install the native build dependencies for Linux (gcc + OpenGL/X11/xkbcommon/Wayland headers)
   dependencies:windows Install the native build dependencies for Windows (MinGW-w64 gcc)
   build                Build every target (host CLI, macOS .app)
   build:cli            Build the CLI for the current host into .build/cli/
   build:macos          Build the macOS GUI into .build/macos/Quesadilla.app (requires macOS)
+  build:llama          Build llama.cpp's static libraries for the embedded-llama backend
   test                 Run go tests (go test ./...)
   clean                Remove generated files (.build/) and .DS_Store files
 EOF
@@ -251,6 +309,9 @@ case "${1:-}" in
     ;;
   build:macos)
     (build_macos)
+    ;;
+  build:llama)
+    (build_llama)
     ;;
   dependencies)
     (dependencies)

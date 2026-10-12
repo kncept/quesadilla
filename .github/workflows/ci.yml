@@ -32,6 +32,11 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          # The embedded-llama backend vendors llama-go (and llama.cpp) as
+          # submodules, and go.mod replaces llama-go with third_party/llama-go,
+          # so the module graph needs them present even for pure-Go builds.
+          submodules: recursive
 
       - name: Set up Go
         uses: actions/setup-go@v5

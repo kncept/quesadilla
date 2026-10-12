@@ -38,6 +38,13 @@ a GUI and a CLI.
 - `onnx` - runs ONNX models with the pure-Go onnx-go inference engine
   (github.com/oramasearch/onnx-go), compiled into the app. Serves a small
   HTTP inference API on localhost:9933.
+- `embedded-llama` - runs GGUF models with llama.cpp compiled into the app,
+  through the cgo bindings of github.com/tcpipuk/llama-go. Serves an
+  OpenAI-compatible HTTP API on localhost:9934. Like gogguf and onnx it has a
+  single `built-in` version (nothing to install). It is cgo, so it is present
+  in every cgo build; pure-Go builds (CGO_ENABLED=0) still list the backend but
+  cannot start a model. See [Backends](docs/BACKENDS.md) for the native library
+  setup (`llama-go` and `llama.cpp` are vendored as submodules).
 
 gogguf is consumed from the `feat/asm-rewrite` branch of
 `github.com/nkrul/gogguf` (a fork of magomedcoder/gogguf, carrying the

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/kncept/quesadilla/backend/definitions"
+	"github.com/kncept/quesadilla/backend/embeddedllama"
 	"github.com/kncept/quesadilla/backend/gogguf"
 	"github.com/kncept/quesadilla/backend/llama"
 	"github.com/kncept/quesadilla/backend/onnx"
@@ -53,6 +54,7 @@ func defaultBackends() []definitions.Backend {
 		llama.LlamaBackend(),
 		gogguf.GoggufBackend(),
 		onnx.OnnxBackend(),
+		embeddedllama.EmbeddedLlamaBackend(),
 	}
 }
 
