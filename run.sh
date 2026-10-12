@@ -166,6 +166,29 @@ dependencies_linux() {
   fi
 }
 
+# Fyne on Windows builds through cgo with a MinGW-w64 gcc. Git for Windows
+# ships one on the PATH of its bash; MSYS2's mingw64 is used as a fallback and,
+# under GitHub Actions, added to PATH for the steps that follow.
+dependencies_windows() {
+  if command -v gcc >/dev/null 2>&1; then
+    echo "Found $(gcc --version | head -n 1)"
+    return 0
+  fi
+
+  local mingw_bin="C:/msys64/mingw64/bin"
+  if [ -d "${mingw_bin}" ]; then
+    export PATH="${mingw_bin}:${PATH}"
+    if [ -n "${GITHUB_PATH:-}" ]; then
+      echo "${mingw_bin}" >> "${GITHUB_PATH}"
+    fi
+    echo "Using MinGW-w64 from ${mingw_bin}"
+    return 0
+  fi
+
+  echo "Error: no C compiler found. Install MinGW-w64 (e.g. via MSYS2) to build the GUI." >&2
+  return 1
+}
+
 # Install the native build dependencies for the current platform by
 # dispatching to the matching dependencies:<os> command.
 dependencies() {
@@ -174,6 +197,7 @@ dependencies() {
   case "${goos}" in
     darwin) (dependencies_macos) ;;
     linux) (dependencies_linux) ;;
+    windows) (dependencies_windows) ;;
     *)
       echo "Error: unsupported host for dependencies: ${goos}" >&2
       return 1
@@ -208,6 +232,7 @@ Commands:
   dependencies         Install the native build dependencies for the host (autoselects the OS)
   dependencies:macos   Install the native build dependencies for macOS (Xcode command line tools)
   dependencies:linux   Install the native build dependencies for Linux (gcc + OpenGL/X11/xkbcommon/Wayland headers)
+  dependencies:windows Install the native build dependencies for Windows (MinGW-w64 gcc)
   build                Build every target (host CLI, macOS .app)
   build:cli            Build the CLI for the current host into .build/cli/
   build:macos          Build the macOS GUI into .build/macos/Quesadilla.app (requires macOS)
@@ -235,6 +260,9 @@ case "${1:-}" in
     ;;
   dependencies:linux)
     (dependencies_linux)
+    ;;
+  dependencies:windows)
+    (dependencies_windows)
     ;;
   test)
     (test)
