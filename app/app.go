@@ -6,6 +6,7 @@ package app
 import (
 	"fmt"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -93,6 +94,25 @@ func (this *QApp) Start(backend backendDefinitions.Backend, model *modelDefiniti
 // AwaitAll blocks until every model started via Start has finished running.
 func (this *QApp) AwaitAll() {
 	this.allRunsWaitGroup.Wait()
+}
+
+// SupportedModelTypes returns the model types that at least one backend
+// supports - the full set of model types the app can run, sorted. It is
+// derived from the backends themselves, so a backend registered for a new
+// model type makes that type supported automatically.
+func (this *QApp) SupportedModelTypes() []string {
+	seen := make(map[string]bool)
+	var types []string
+	for _, b := range this.Backends.Backends() {
+		for _, modelType := range b.ModelTypes() {
+			if !seen[modelType] {
+				seen[modelType] = true
+				types = append(types, modelType)
+			}
+		}
+	}
+	slices.Sort(types)
+	return types
 }
 
 // RunningModels returns the models currently running, sorted by name.

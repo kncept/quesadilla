@@ -13,6 +13,7 @@ type ModelType string
 // The model types the application supports.
 const (
 	ModelTypeGGUF ModelType = "gguf"
+	ModelTypeONNX ModelType = "onnx"
 )
 
 // NoneFamily is the model family used when a model's family is unknown.
@@ -24,8 +25,9 @@ const NoneFamily = "none"
 // model's directory.
 const QModelFileName = "qmodel.json"
 
-// ModelVariant is one runnable file of a model. For gguf models, a variant is
-// a single .gguf file (typically one quantization of the model).
+// ModelVariant is one runnable file of a model. For gguf and onnx models, a
+// variant is a single model file (.gguf or .onnx); for gguf it is typically
+// one quantization of the model.
 //
 // For variants whose files are stored in the model's own directory (beside
 // its qmodel.json), FileName is the file's base name and Location is empty.

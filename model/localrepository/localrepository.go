@@ -18,7 +18,23 @@ import (
 )
 
 // supportedTypes are the model types the local repository stores and scans.
-var supportedTypes = []string{string(definitions.ModelTypeGGUF)}
+var supportedTypes = []string{string(definitions.ModelTypeGGUF), string(definitions.ModelTypeONNX)}
+
+// typeFileExtensions maps a model type to the file extension of the files
+// that make up its variants.
+var typeFileExtensions = map[string]string{
+	string(definitions.ModelTypeGGUF): ".gguf",
+	string(definitions.ModelTypeONNX): ".onnx",
+}
+
+// fileExtensionFor returns the variant file extension of the given model
+// type (the legacy .gguf when the type is not one the repository knows).
+func fileExtensionFor(modelType string) string {
+	if ext, ok := typeFileExtensions[modelType]; ok {
+		return ext
+	}
+	return ".gguf"
+}
 
 // LocalRepository maintains the application's locally-installed models.
 // Models are scanned once when the repository is created, and the loaded set
@@ -91,7 +107,7 @@ func (this *LocalRepository) RemoveModel(modelName string) error {
 // qmodel.json, with the variants marked linked and pointing at where their
 // files live. The repository rescans afterwards.
 func (this *LocalRepository) LinkScannedModel(scannedModel *definitions.RemoteModel) error {
-	if scannedModel.ModelType != string(definitions.ModelTypeGGUF) {
+	if _, ok := typeFileExtensions[scannedModel.ModelType]; !ok {
 		return fmt.Errorf("Unknown model type: %s", scannedModel.ModelType)
 	}
 	modelsDir := qenv.QModelsDirectory(scannedModel.ModelType)
@@ -160,7 +176,7 @@ func (this *LocalRepository) DownloadVariant(scannedModel *definitions.RemoteMod
 // variants already stored there, then (re)writes the model's qmodel.json and
 // rescans.
 func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteModel, only *definitions.ModelVariant) error {
-	if scannedModel.ModelType != string(definitions.ModelTypeGGUF) {
+	if _, ok := typeFileExtensions[scannedModel.ModelType]; !ok {
 		return fmt.Errorf("Unknown model type: %s", scannedModel.ModelType)
 	}
 	modelsDir := qenv.QModelsDirectory(scannedModel.ModelType)
@@ -325,7 +341,7 @@ func listModelsOfType(modelType string) ([]definitions.Model, error) {
 		if !entry.IsDir() {
 			continue // stray files (eg temporary downloads) are not models
 		}
-		found, err := listModelsUnder(modelsDir, []string{entry.Name()}, path.Join(modelsDir, entry.Name()))
+		found, err := listModelsUnder(modelsDir, []string{entry.Name()}, path.Join(modelsDir, entry.Name()), fileExtensionFor(modelType))
 		if err != nil {
 			return nil, err
 		}
@@ -341,8 +357,8 @@ func listModelsOfType(modelType string) ([]definitions.Model, error) {
 // (the first component is the family, the rest the name). Otherwise the
 // model, if any, may be in a subdirectory (legacy nested names), so the walk
 // continues into the subdirectories.
-func listModelsUnder(modelsDir string, components []string, dir string) ([]definitions.Model, error) {
-	if isModelDirectory(dir) {
+func listModelsUnder(modelsDir string, components []string, dir string, ext string) ([]definitions.Model, error) {
+	if isModelDirectory(dir, ext) {
 		if len(components) == 1 && components[0] != definitions.NoneFamily {
 			// a model directly under the type directory has no family:
 			// relocate it under the "none" family, as the current layout
@@ -353,7 +369,7 @@ func listModelsUnder(modelsDir string, components []string, dir string) ([]defin
 			components = []string{definitions.NoneFamily, components[0]}
 			dir = path.Join(modelsDir, definitions.NoneFamily, components[1])
 		}
-		return loadModelDirectory(components, dir)
+		return loadModelDirectory(components, dir, ext)
 	}
 
 	entries, err := os.ReadDir(dir)
@@ -365,7 +381,7 @@ func listModelsUnder(modelsDir string, components []string, dir string) ([]defin
 		if !entry.IsDir() {
 			continue
 		}
-		found, err := listModelsUnder(modelsDir, append(components, entry.Name()), path.Join(dir, entry.Name()))
+		found, err := listModelsUnder(modelsDir, append(components, entry.Name()), path.Join(dir, entry.Name()), ext)
 		if err != nil {
 			return nil, err
 		}
@@ -375,8 +391,8 @@ func listModelsUnder(modelsDir string, components []string, dir string) ([]defin
 }
 
 // isModelDirectory reports whether dir holds a model: its qmodel.json, a
-// legacy model.json, or one or more model files.
-func isModelDirectory(dir string) bool {
+// legacy model.json, or one or more model files with the type's extension.
+func isModelDirectory(dir string, ext string) bool {
 	if fileExists(path.Join(dir, definitions.QModelFileName)) {
 		return true
 	}
@@ -388,7 +404,7 @@ func isModelDirectory(dir string) bool {
 		return false
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".gguf") {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ext) {
 			return true
 		}
 	}
@@ -444,14 +460,14 @@ type legacyQModel struct {
 // without one is a legacy layout (bare model files, or a single model.json
 // for a linked model) and is migrated to the current layout on the spot.
 // Models without a single runnable variant are not listed.
-func loadModelDirectory(components []string, dir string) ([]definitions.Model, error) {
+func loadModelDirectory(components []string, dir string, ext string) ([]definitions.Model, error) {
 	family := components[0]
 	name := strings.Join(components[1:], "/")
 	if name == "" {
 		family, name = definitions.NoneFamily, family
 	}
 
-	qm, rewrite := loadOrMigrateQModel(dir, family, name)
+	qm, rewrite := loadOrMigrateQModel(dir, family, name, ext)
 	if qm.ModelFamily == "" {
 		qm.ModelFamily = family
 	}
@@ -462,7 +478,7 @@ func loadModelDirectory(components []string, dir string) ([]definitions.Model, e
 	// refresh the variant list against the files in the directory: local
 	// model files the metadata does not list become variants, and the
 	// metadata's local variants get their sizes refreshed from disk
-	reconcileVariants(&qm, dir)
+	reconcileVariants(&qm, dir, ext)
 
 	if len(qm.Variants) == 0 {
 		// no runnable variants: not a usable model
@@ -499,7 +515,7 @@ func loadModelDirectory(components []string, dir string) ([]definitions.Model, e
 // model, or bare model files). The second result reports whether the metadata
 // must be (re)written: it is a migration, or the stored metadata was missing
 // or unreadable.
-func loadOrMigrateQModel(dir, family, name string) (definitions.QModel, bool) {
+func loadOrMigrateQModel(dir, family, name string, ext string) (definitions.QModel, bool) {
 	qmPath := path.Join(dir, definitions.QModelFileName)
 	if data, err := os.ReadFile(qmPath); err == nil {
 		qm := definitions.QModel{}
@@ -550,7 +566,7 @@ func loadOrMigrateQModel(dir, family, name string) (definitions.QModel, bool) {
 	// a legacy bare-file model: the directory holds the model's files
 	if entries, err := os.ReadDir(dir); err == nil {
 		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".gguf") {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ext) {
 				continue
 			}
 			info, err := entry.Info()
@@ -571,13 +587,13 @@ func loadOrMigrateQModel(dir, family, name string) (definitions.QModel, bool) {
 // its directory: local model files the metadata does not list are added as
 // variants, and the metadata's local variants have their sizes refreshed
 // from disk. The variant list is left sorted by file name.
-func reconcileVariants(qm *definitions.QModel, dir string) {
+func reconcileVariants(qm *definitions.QModel, dir string, ext string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".gguf") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ext) {
 			continue
 		}
 		info, err := entry.Info()

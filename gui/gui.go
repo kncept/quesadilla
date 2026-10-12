@@ -79,6 +79,7 @@ type QGUI struct {
 	searchQueryBar         *fyne.Container
 	searchQueryEntry       *widget.Entry
 	searchQueryButton      *widget.Button
+	searchModelTypeChecks  map[string]*widget.Check // model type -> checkbox
 }
 
 // Start launches the lightweight system-tray indicator. Blocks until quit.

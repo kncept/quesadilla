@@ -8,6 +8,7 @@ import (
 	"github.com/kncept/quesadilla/backend/definitions"
 	"github.com/kncept/quesadilla/backend/gogguf"
 	"github.com/kncept/quesadilla/backend/llama"
+	"github.com/kncept/quesadilla/backend/onnx"
 	"github.com/kncept/quesadilla/config"
 )
 
@@ -51,6 +52,7 @@ func defaultBackends() []definitions.Backend {
 	return []definitions.Backend{
 		llama.LlamaBackend(),
 		gogguf.GoggufBackend(),
+		onnx.OnnxBackend(),
 	}
 }
 

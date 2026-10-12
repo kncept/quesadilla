@@ -30,8 +30,12 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	args := []string{
 		"", // why do we need this to have and blank (or llama-server)??
 		"--model", m.ModelFile,
+		"--alias", m.ModelName,
 		"--host", "localhost",
 		"--port", "9931", // 9931 --> planned defult port in the future
+
+		// if it's set larger, llama snipt is back :(
+		// "--ctx-size", "524288", // qwen 3.8 is 262,144 - just double it
 
 		// GPU offload *everything possible*
 		"--n-gpu-layers", "999",

@@ -53,6 +53,20 @@ var hfFilterOptions = []url.Values{
 		"direction": {"-1"},
 		"limit":     {"10"},
 	},
+	{
+		// the most downloaded ONNX models
+		"filter":    {"onnx"},
+		"sort":      {"downloads"},
+		"direction": {"-1"},
+		"limit":     {"10"},
+	},
+	{
+		// the most liked ONNX models
+		"filter":    {"onnx"},
+		"sort":      {"likes"},
+		"direction": {"-1"},
+		"limit":     {"10"},
+	},
 }
 
 // hfModel is one entry of the HuggingFace models API response.
@@ -125,21 +139,37 @@ func (this *HuggingFaceScanner) ScanForModels() ([]definitions.RemoteModel, erro
 }
 
 // ScanForQuery implements [definitions.QueryModelScanner]. It runs a single
-// hub search for the query (limited to GGUF models) and lists what it finds,
-// trimming models without a runnable GGUF file. An empty query falls back to
+// hub search for the query (limited to GGUF and ONNX models) and lists what it finds,
+// trimming models without a runnable GGUF or ONNX file. An empty query falls back to
 // the scanner's default listing.
 func (this *HuggingFaceScanner) ScanForQuery(query string) ([]definitions.RemoteModel, error) {
-	if strings.TrimSpace(query) == "" {
-		return this.ScanForModels()
+	return this.ScanForQueryWithTypes(query, []string{string(definitions.ModelTypeGGUF), string(definitions.ModelTypeONNX)})
+}
+
+// ScanForQueryWithTypes runs a hub search for the query, filtered by the given
+// model types (e.g., "gguf", "onnx"). An empty query runs a search with just the
+// model type filters (no text search). An empty modelTypes slice means no type
+// filtering.
+func (this *HuggingFaceScanner) ScanForQueryWithTypes(query string, modelTypes []string) ([]definitions.RemoteModel, error) {
+	// Build filter from model types
+	filterValue := ""
+	if len(modelTypes) > 0 {
+		filterValue = strings.Join(modelTypes, ",")
 	}
 
-	list, err := this.listModels(url.Values{
-		"filter":    {"gguf"},
-		"search":    {query},
+	params := url.Values{
 		"sort":      {"downloads"},
 		"direction": {"-1"},
 		"limit":     {"30"},
-	})
+	}
+	if strings.TrimSpace(query) != "" {
+		params.Set("search", query)
+	}
+	if filterValue != "" {
+		params.Set("filter", filterValue)
+	}
+
+	list, err := this.listModels(params)
 	if err != nil {
 		return nil, err
 	}
@@ -155,11 +185,11 @@ func (this *HuggingFaceScanner) ScanForQuery(query string) ([]definitions.Remote
 
 // toRemoteModel maps a hub model to the scanner's RemoteModel: its family
 // and name come from the model's id, and its variants are the model's GGUF
-// files (listed from the repository's tree, with their sizes). A model
-// without a single GGUF file has no runnable variants and is reported as
+// or ONNX files (listed from the repository's tree, with their sizes). A model
+// without a single GGUF or ONNX file has no runnable variants and is reported as
 // nil, so it can be trimmed from listings.
 func (this *HuggingFaceScanner) toRemoteModel(m hfModel) *definitions.RemoteModel {
-	variants, licencePath := this.variantsFromTree(m)
+	variants, licencePath, modelType := this.variantsFromTree(m)
 	if len(variants) == 0 {
 		return nil
 	}
@@ -168,7 +198,7 @@ func (this *HuggingFaceScanner) toRemoteModel(m hfModel) *definitions.RemoteMode
 		ModelFamily: "",
 		ModelName:   "",
 		ModelSource: this.ScannerName(),
-		ModelType:   string(definitions.ModelTypeGGUF),
+		ModelType:   modelType,
 		ModelURL:    m.repoURL(),
 		Variants:    variants,
 		LicenceName: m.License,
@@ -180,17 +210,20 @@ func (this *HuggingFaceScanner) toRemoteModel(m hfModel) *definitions.RemoteMode
 	return remote
 }
 
-// variantsFromTree lists the model's variants (its GGUF files) and its
-// licence file, from the model's repository tree.
-func (this *HuggingFaceScanner) variantsFromTree(m hfModel) ([]definitions.ModelVariant, string) {
+// variantsFromTree lists the model's variants (its GGUF and ONNX files) and its
+// licence file, from the model's repository tree. It returns the variants, the
+// licence file path (if found), and the model type (GGUF or ONNX) based on the
+// first variant found.
+func (this *HuggingFaceScanner) variantsFromTree(m hfModel) ([]definitions.ModelVariant, string, string) {
 	files, err := this.treeFiles(m.ID)
 	if err != nil {
 		// without the tree there is no way to list the model's variants
-		return nil, ""
+		return nil, "", ""
 	}
 
 	variants := make([]definitions.ModelVariant, 0)
 	licencePath := ""
+	var modelType string
 	for _, f := range files {
 		if f.Type != "file" {
 			continue
@@ -201,13 +234,27 @@ func (this *HuggingFaceScanner) variantsFromTree(m hfModel) ([]definitions.Model
 				Location: m.resolveURL(f.Path),
 				FileSize: f.Size,
 			})
+			if modelType == "" {
+				modelType = string(definitions.ModelTypeGGUF)
+			}
+			continue
+		}
+		if strings.HasSuffix(f.Path, ".onnx") {
+			variants = append(variants, definitions.ModelVariant{
+				FileName: path.Base(f.Path),
+				Location: m.resolveURL(f.Path),
+				FileSize: f.Size,
+			})
+			if modelType == "" {
+				modelType = string(definitions.ModelTypeONNX)
+			}
 			continue
 		}
 		if licencePath == "" && isLicenceFile(f.Path) {
 			licencePath = f.Path
 		}
 	}
-	return variants, licencePath
+	return variants, licencePath, modelType
 }
 
 // isLicenceFile reports whether a repository path is the repository's

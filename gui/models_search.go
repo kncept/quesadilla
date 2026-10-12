@@ -519,7 +519,8 @@ func (this *QGUI) runModelSearchQuery(scanner modelDefinitions.ModelScanner, que
 }
 
 // runHuggingFaceSearch runs the scanner behind the search box with the query
-// the user typed (an empty query lists the scanner's default models).
+// the user typed (an empty query lists the scanner's default models), filtered
+// by the selected model types.
 func (this *QGUI) runHuggingFaceSearch() {
 	scanner := this.searchQueryScanner
 	if scanner == nil {
@@ -530,11 +531,64 @@ func (this *QGUI) runHuggingFaceSearch() {
 		this.searchStatusLabel.SetText("HuggingFace scanner is not available")
 		return
 	}
-	this.runModelSearchQuery(scanner, strings.TrimSpace(this.searchQueryEntry.Text))
+
+	// Collect selected model types from checkboxes
+	var selectedTypes []string
+	for modelType, check := range this.searchModelTypeChecks {
+		if check.Checked {
+			selectedTypes = append(selectedTypes, modelType)
+		}
+	}
+
+	// Use the HuggingFace scanner's type-filtered search method
+	if hfScanner, ok := scanner.(*remoterepository.HuggingFaceScanner); ok {
+		query := strings.TrimSpace(this.searchQueryEntry.Text)
+		this.runHuggingFaceSearchWithTypes(hfScanner, query, selectedTypes)
+	} else {
+		// Fallback for other queryable scanners
+		this.runModelSearchQuery(scanner, strings.TrimSpace(this.searchQueryEntry.Text))
+	}
+}
+
+// runHuggingFaceSearchWithTypes runs the HuggingFace scanner with the given
+// query and model type filters.
+func (this *QGUI) runHuggingFaceSearchWithTypes(scanner *remoterepository.HuggingFaceScanner, query string, modelTypes []string) {
+	if this.searchRunning {
+		return
+	}
+	this.searchRunning = true
+
+	this.searchQueryScanner = scanner
+	this.setSearchQueryBarVisible(true)
+
+	this.searchSpinner.Show()
+	this.searchStatusLabel.Show()
+	if query != "" {
+		this.searchStatusLabel.SetText(fmt.Sprintf("Searching %s for %q (types: %v)...", scanner.ScannerName(), query, modelTypes))
+	} else {
+		this.searchStatusLabel.SetText(fmt.Sprintf("Searching with %s (types: %v)...", scanner.ScannerName(), modelTypes))
+	}
+	if this.searchFilesystemForm != nil {
+		this.searchFilesystemForm.Hide()
+	}
+
+	go func() {
+		models, err := scanner.ScanForQueryWithTypes(query, modelTypes)
+		// the screen is the source of truth for where its results came from,
+		// so stamp the scanner name on every result; the download action
+		// looks the scanner back up by that name
+		for i := range models {
+			models[i].ModelSource = scanner.ScannerName()
+		}
+		fyne.Do(func() {
+			this.finishModelSearch(models, err)
+		})
+	}()
 }
 
 // newSearchQueryBar builds the search box shown above a searchable scanner's
-// results: a text entry whose submissions run the search, and a Search button.
+// results: a text entry whose submissions run the search, a Search button,
+// and checkboxes for filtering by model type (driven from the backends we support).
 func (this *QGUI) newSearchQueryBar() {
 	this.searchQueryEntry = widget.NewEntry()
 	this.searchQueryEntry.SetPlaceHolder("Search HuggingFace models...")
@@ -544,7 +598,27 @@ func (this *QGUI) newSearchQueryBar() {
 	this.searchQueryButton = widget.NewButtonWithIcon("Search", theme.SearchIcon(), func() {
 		this.runHuggingFaceSearch()
 	})
+
+	// Build model type filter checkboxes from supported model types
+	this.searchModelTypeChecks = make(map[string]*widget.Check)
+	supportedTypes := this.QApp.SupportedModelTypes()
+	typeCheckBoxes := make([]fyne.CanvasObject, 0, len(supportedTypes))
+	for _, modelType := range supportedTypes {
+		check := widget.NewCheck(modelType, nil)
+		check.SetChecked(true) // default to all checked
+		this.searchModelTypeChecks[modelType] = check
+		typeCheckBoxes = append(typeCheckBoxes, check)
+	}
+
+	// Create a container for the model type filters
+	modelTypeFilterBox := container.NewVBox(
+		widget.NewLabelWithStyle("Model Type Filter", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		container.NewHBox(typeCheckBoxes...),
+	)
+
+	// Add the search entry + button, and the model type filters
 	this.searchQueryBar.Add(container.NewBorder(nil, nil, nil, this.searchQueryButton, this.searchQueryEntry))
+	this.searchQueryBar.Add(modelTypeFilterBox)
 }
 
 // setSearchQueryBarVisible shows or hides the search box, building it the

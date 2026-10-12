@@ -59,7 +59,7 @@ func (this *goggufBackend) LatestVersion() string {
 
 // ModelTypes implements [definitions.Backend].
 func (this *goggufBackend) ModelTypes() []string {
-	return []string{"hf"}
+	return []string{string(modelDefinitions.ModelTypeGGUF)}
 }
 
 // RemoveVersion implements [definitions.Backend]. The runtime is compiled

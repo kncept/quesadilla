@@ -322,7 +322,7 @@ func TestDownloadModelUnknownType(t *testing.T) {
 		ModelFamily: "org",
 		ModelName:   "b",
 		ModelSource: "ZTest",
-		ModelType:   "hf",
+		ModelType:   "xxx",
 		Variants:    []definitions.ModelVariant{{FileName: "b.gguf", Location: "https://x.org/b.gguf"}},
 	})
 	if err == nil {

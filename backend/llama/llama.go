@@ -66,7 +66,7 @@ func (this *llamaBackend) LatestVersion() string {
 
 // ModelTypes implements [definitions.Backend].
 func (l *llamaBackend) ModelTypes() []string {
-	return []string{"gguf", "hf"}
+	return []string{"gguf"}
 }
 
 // RemoveVersion implements [definitions.Backend].
