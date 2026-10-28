@@ -121,6 +121,7 @@ func (this *LocalRepository) LinkScannedModel(scannedModel *definitions.RemoteMo
 		ModelName:   scannedModel.ModelName,
 		ModelSource: scannedModel.ModelSource,
 		ModelType:   scannedModel.ModelType,
+		ModelURL:    scannedModel.ModelURL,
 		LicenceName: scannedModel.LicenceName,
 	}
 	now := time.Now()
@@ -192,6 +193,9 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 	qm.ModelName = scannedModel.ModelName
 	qm.ModelSource = scannedModel.ModelSource
 	qm.ModelType = scannedModel.ModelType
+	if scannedModel.ModelURL != "" {
+		qm.ModelURL = scannedModel.ModelURL
+	}
 	if scannedModel.LicenceName != "" {
 		qm.LicenceName = scannedModel.LicenceName
 	}
@@ -501,6 +505,7 @@ func loadModelDirectory(components []string, dir string, ext string) ([]definiti
 		ModelDirectory: dir,
 		Variants:       qm.Variants,
 		ModelSource:    qm.ModelSource,
+		ModelURL:       qm.ModelURL,
 		LicenceName:    qm.LicenceName,
 	}
 	if qm.LicenceFile != "" {

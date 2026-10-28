@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -303,6 +304,95 @@ func TestModelsTableLogsButtonDisabledUnlessRunning(t *testing.T) {
 	}
 	if logs.Disabled() {
 		t.Error("logs button should be enabled while the model is running")
+	}
+}
+
+// TestModelsTableOpenButton verifies the actions column shows an Open button
+// for models whose metadata records a page (and a tap on it opens that page,
+// routed through the openURL hook), and no such button for models whose
+// metadata does not.
+func TestModelsTableOpenButton(t *testing.T) {
+	test.NewApp()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	modelsDir := path.Join(home, ".quesadilla", "models", "gguf")
+
+	// a model whose metadata records its page at the source
+	pagedDir := path.Join(modelsDir, "org", "paged")
+	if err := os.MkdirAll(pagedDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path.Join(pagedDir, "paged.gguf"), []byte("stub"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	qmodel := `{
+		"ModelFamily": "org",
+		"ModelName": "paged",
+		"ModelType": "gguf",
+		"ModelURL": "https://huggingface.co/org/paged",
+		"Variants": [{"FileName": "paged.gguf", "ImportedAt": "2024-01-01T00:00:00Z", "FileSize": 4}]
+	}`
+	if err := os.WriteFile(path.Join(pagedDir, "qmodel.json"), []byte(qmodel), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// a model whose metadata records no page
+	bareDir := path.Join(modelsDir, "none", "bare")
+	if err := os.MkdirAll(bareDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path.Join(bareDir, "bare.gguf"), []byte("stub"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	g := CreateGui(nil, app.New())
+	opened := ""
+	g.openURL = func(u *url.URL) error {
+		opened = u.String()
+		return nil
+	}
+	table := g.newModelsTable()
+
+	rows, _ := table.Length()
+	if rows != 2 {
+		t.Fatalf("table rows = %d, want 2", rows)
+	}
+
+	// the paged model: start/stop, delete, logs and an Open button
+	pagedRow, bareRow := -1, -1
+	for i := 0; i < rows; i++ {
+		switch tableCellText(table, i, 1) {
+		case "org/paged":
+			pagedRow = i
+		case "bare":
+			bareRow = i
+		}
+	}
+	if pagedRow < 0 || bareRow < 0 {
+		t.Fatalf("expected both models in the table (rows = %d)", rows)
+	}
+
+	pagedButtons := tableCellButtons(table, pagedRow, 0)
+	if len(pagedButtons) != 4 {
+		t.Fatalf("paged row buttons = %d, want 4 (start/stop, delete, logs, Open)", len(pagedButtons))
+	}
+	open := findButtonByText(pagedButtons, "Open")
+	if open == nil {
+		t.Fatal("expected an Open button in the paged model's actions")
+	}
+	open.Tapped(nil)
+	if opened != "https://huggingface.co/org/paged" {
+		t.Errorf("opened URL = %q, want the model's page", opened)
+	}
+
+	// the model without a page: no Open button
+	bareButtons := tableCellButtons(table, bareRow, 0)
+	if len(bareButtons) != 3 {
+		t.Fatalf("bare row buttons = %d, want 3 (start/stop, delete, logs)", len(bareButtons))
+	}
+	if findButtonByText(bareButtons, "Open") != nil {
+		t.Error("did not expect an Open button on a model without a page")
 	}
 }
 

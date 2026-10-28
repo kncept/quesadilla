@@ -173,10 +173,10 @@ func TestHuggingFaceScanForModels(t *testing.T) {
 	}
 
 	byName := make(map[string]struct {
-		family   string
-		name     string
-		variants []string
-		licence  string
+		family    string
+		name      string
+		variants  []string
+		licence   string
 		modelType string
 	})
 	for _, m := range models {
@@ -185,10 +185,10 @@ func TestHuggingFaceScanForModels(t *testing.T) {
 			vars = append(vars, v.FileName)
 		}
 		byName[m.FullModelName()] = struct {
-			family   string
-			name     string
-			variants []string
-			licence  string
+			family    string
+			name      string
+			variants  []string
+			licence   string
 			modelType string
 		}{m.ModelFamily, m.ModelName, vars, m.LicenceName, m.ModelType}
 	}
@@ -323,6 +323,165 @@ func TestHuggingFaceScanForQueryEmpty(t *testing.T) {
 	// The test server's combined gguf,onnx filter returns Ggufy, Onny, Texty.
 	if len(models) != 3 {
 		t.Errorf("scanned %d models, want 3 (gguf+onnx search)", len(models))
+	}
+}
+
+// TestHuggingFaceModelIDFromQuery verifies which queries are recognized as
+// HuggingFace model page URLs: an http(s) URL on a HuggingFace host whose path
+// is the model's id (exactly two segments, "org/name").
+func TestHuggingFaceModelIDFromQuery(t *testing.T) {
+	tests := []struct {
+		query string
+		want  string
+	}{
+		{"https://huggingface.co/unsloth/Qwen3.8-27B-GGUF", "unsloth/Qwen3.8-27B-GGUF"},
+		{"http://huggingface.co/acme/Ggufy", "acme/Ggufy"},
+		{"https://hf.co/acme/Ggufy", "acme/Ggufy"},
+		{"https://HuggingFace.co/acme/Ggufy", "acme/Ggufy"},
+		{"  https://huggingface.co/acme/Ggufy  ", "acme/Ggufy"},
+		{"https://huggingface.co/acme/Ggufy/", "acme/Ggufy"},
+		{"https://huggingface.co/acme", ""},                                  // no name
+		{"https://huggingface.co/", ""},                                      // no id at all
+		{"https://huggingface.co/acme/Ggufy/tree/main", ""},                  // a tree page, not a model page
+		{"https://huggingface.co/acme/Ggufy/resolve/main/Ggufy-Q4.gguf", ""}, // a file URL
+		{"https://example.org/acme/Ggufy", ""},                               // not a HuggingFace host
+		{"https://huggingface.co.evil.org/acme/Ggufy", ""},                   // a lookalike host
+		{"llama", ""},
+		{"https://huggingface.co", ""},
+		{"", ""},
+	}
+	for _, test := range tests {
+		if got := modelIDFromQuery(test.query); got != test.want {
+			t.Errorf("modelIDFromQuery(%q) = %q, want %q", test.query, got, test.want)
+		}
+	}
+}
+
+// TestHuggingFaceScanForQueryModelURL verifies a query that is a HuggingFace
+// model page URL lists that model on its own, fetching it directly from the hub
+// (and its tree, for the variants) rather than running a hub search.
+func TestHuggingFaceScanForQueryModelURL(t *testing.T) {
+	requests := &[]string{}
+	server := hfTestServer(t, requests)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	models, err := NewHuggingFaceScanner().ScanForQuery("https://huggingface.co/acme/Ggufy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].FullModelName() != "acme/Ggufy" {
+		t.Fatalf("models = %+v, want just acme/Ggufy", models)
+	}
+	if models[0].ModelSource != HuggingFaceScannerName {
+		t.Errorf("source = %q, want %q", models[0].ModelSource, HuggingFaceScannerName)
+	}
+	if len(models[0].Variants) != 2 {
+		t.Errorf("variants = %v, want both of the model's GGUF files", models[0].Variants)
+	}
+
+	var fetched, tree, searched bool
+	for _, request := range *requests {
+		if request == "/api/models/acme/Ggufy" {
+			fetched = true
+		}
+		if strings.HasPrefix(request, "/api/models/acme/Ggufy/tree/main") {
+			tree = true
+		}
+		if strings.Contains(request, "search=") {
+			searched = true
+		}
+	}
+	if !fetched {
+		t.Errorf("requests = %v, want the single-model fetch /api/models/acme/Ggufy", *requests)
+	}
+	if !tree {
+		t.Errorf("requests = %v, want the model's tree fetch", *requests)
+	}
+	if searched {
+		t.Errorf("requests = %v, want no hub search for a model URL", *requests)
+	}
+}
+
+// TestHuggingFaceScanForQueryModelURLIgnoresTypes verifies a model page URL is
+// fetched regardless of the type filters: the URL names the model the user
+// wants, so the filters do not apply to it.
+func TestHuggingFaceScanForQueryModelURLIgnoresTypes(t *testing.T) {
+	server := hfTestServer(t, nil)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	// acme/Onny holds only ONNX files, yet a gguf-only filter is selected
+	models, err := NewHuggingFaceScanner().ScanForQueryWithTypes("https://huggingface.co/acme/Onny", []string{"gguf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].FullModelName() != "acme/Onny" {
+		t.Fatalf("models = %+v, want just acme/Onny", models)
+	}
+}
+
+// TestHuggingFaceScanForQueryModelURLNoVariants verifies a model page URL for a
+// model with no runnable (GGUF/ONNX) variant yields an empty listing rather
+// than an error.
+func TestHuggingFaceScanForQueryModelURLNoVariants(t *testing.T) {
+	server := hfTestServer(t, nil)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	models, err := NewHuggingFaceScanner().ScanForQuery("https://huggingface.co/acme/Plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 0 {
+		t.Errorf("models = %+v, want none (acme/Plain has no runnable variants)", models)
+	}
+}
+
+// TestHuggingFaceScanForQueryModelURLNotFound verifies a model page URL for a
+// model the hub does not know is reported as an error.
+func TestHuggingFaceScanForQueryModelURLNotFound(t *testing.T) {
+	server := hfTestServer(t, nil)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	if _, err := NewHuggingFaceScanner().ScanForQuery("https://huggingface.co/acme/Missing"); err == nil {
+		t.Error("expected an error for a model page URL the hub does not know")
+	}
+}
+
+// TestHuggingFaceScanForQueryNonHfURL verifies a URL that is not a HuggingFace
+// model page URL is searched for as a plain query, not fetched as a model.
+func TestHuggingFaceScanForQueryNonHfURL(t *testing.T) {
+	requests := &[]string{}
+	server := hfTestServer(t, requests)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	models, err := NewHuggingFaceScanner().ScanForQuery("https://example.org/acme/Ggufy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the test server answers any search with acme/Searched (kept) and
+	// acme/Plain (trimmed, no runnable variants)
+	if len(models) != 1 || models[0].FullModelName() != "acme/Searched" {
+		t.Fatalf("models = %+v, want the search result acme/Searched", models)
+	}
+
+	var searched, fetched bool
+	for _, request := range *requests {
+		if strings.Contains(request, "search=") {
+			searched = true
+		}
+		if strings.HasPrefix(request, "/api/models/acme/Ggufy") {
+			fetched = true
+		}
+	}
+	if !searched {
+		t.Errorf("requests = %v, want a hub search for the non-HuggingFace URL", *requests)
+	}
+	if fetched {
+		t.Errorf("requests = %v, want no single-model fetch for a non-HuggingFace URL", *requests)
 	}
 }
 

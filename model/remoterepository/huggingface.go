@@ -140,8 +140,9 @@ func (this *HuggingFaceScanner) ScanForModels() ([]definitions.RemoteModel, erro
 
 // ScanForQuery implements [definitions.QueryModelScanner]. It runs a single
 // hub search for the query (limited to GGUF and ONNX models) and lists what it finds,
-// trimming models without a runnable GGUF or ONNX file. An empty query falls back to
-// the scanner's default listing.
+// trimming models without a runnable GGUF or ONNX file. A query that is a HuggingFace
+// model page URL names one model directly, so that model is fetched on its own. An
+// empty query falls back to the scanner's default listing.
 func (this *HuggingFaceScanner) ScanForQuery(query string) ([]definitions.RemoteModel, error) {
 	return this.ScanForQueryWithTypes(query, []string{string(definitions.ModelTypeGGUF), string(definitions.ModelTypeONNX)})
 }
@@ -149,8 +150,18 @@ func (this *HuggingFaceScanner) ScanForQuery(query string) ([]definitions.Remote
 // ScanForQueryWithTypes runs a hub search for the query, filtered by the given
 // model types (e.g., "gguf", "onnx"). An empty query runs a search with just the
 // model type filters (no text search). An empty modelTypes slice means no type
-// filtering.
+// filtering. A query that is a HuggingFace model page URL (eg
+// "https://huggingface.co/org/name") skips the search and fetches that one model
+// directly, ignoring the type filters.
 func (this *HuggingFaceScanner) ScanForQueryWithTypes(query string, modelTypes []string) ([]definitions.RemoteModel, error) {
+	// A model page URL names the model directly, so it is fetched on its own:
+	// the hub's search is a fuzzy text search, which would not reliably return
+	// the model a pasted URL points at, and the type filters do not apply to a
+	// model the user asked for by name.
+	if modelID := modelIDFromQuery(query); modelID != "" {
+		return this.listModel(modelID)
+	}
+
 	// Build filter from model types
 	filterValue := ""
 	if len(modelTypes) > 0 {
@@ -181,6 +192,44 @@ func (this *HuggingFaceScanner) ScanForQueryWithTypes(query string, modelTypes [
 		}
 	}
 	return models, nil
+}
+
+// modelIDFromQuery reports whether the query is a HuggingFace model page URL
+// (eg "https://huggingface.co/org/name"), and returns the model's id ("org/name")
+// if so. A query that is not such a URL yields "".
+func modelIDFromQuery(query string) string {
+	u, err := url.Parse(strings.TrimSpace(query))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "huggingface.co" && host != "hf.co" {
+		return ""
+	}
+	// a model page URL is the host followed by the model's id: exactly two
+	// path segments, "org/name" (a tree or file URL has more, a search page
+	// has none)
+	segments := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(segments) != 2 || segments[0] == "" || segments[1] == "" {
+		return ""
+	}
+	return segments[0] + "/" + segments[1]
+}
+
+// listModel lists the single model with the given hub id: it fetches the model
+// from the hub and maps it to a RemoteModel. A model the hub does not know (or
+// cannot reach) is an error, and a model without a single runnable (GGUF/ONNX)
+// variant is an empty listing.
+func (this *HuggingFaceScanner) listModel(modelID string) ([]definitions.RemoteModel, error) {
+	m, err := this.getModel(modelID)
+	if err != nil {
+		return nil, err
+	}
+	remote := this.toRemoteModel(*m)
+	if remote == nil {
+		return []definitions.RemoteModel{}, nil
+	}
+	return []definitions.RemoteModel{*remote}, nil
 }
 
 // toRemoteModel maps a hub model to the scanner's RemoteModel: its family
@@ -316,6 +365,9 @@ func (this *HuggingFaceScanner) getModel(modelName string) (*hfModel, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("model %s: not found on the hub", modelName)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("model %s: unexpected status %d", modelName, resp.StatusCode)
 	}

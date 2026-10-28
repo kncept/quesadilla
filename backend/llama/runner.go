@@ -30,6 +30,10 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	args := []string{
 		"", // why do we need this to have and blank (or llama-server)??
 		"--model", m.ModelFile,
+
+		// "--mmproj", m.ModelFile, // TODO: read metadata see if it's there !!
+		// "--jinja", //?
+
 		"--alias", m.ModelName,
 		"--host", "localhost",
 		"--port", "9931", // 9931 --> planned defult port in the future

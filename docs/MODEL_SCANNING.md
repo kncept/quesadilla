@@ -49,3 +49,7 @@ From the Model Search screen, a found model can be:
   copied).
 - **Import** - a linked model's files are copied into the local repository,
   turning the link into a local copy.
+
+When a model is downloaded or linked, its page at its source (`ModelURL`) is
+stored in the model's metadata (qmodel.json), so the page can be opened from
+the installed model later (the Models screen's Open button).

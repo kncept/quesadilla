@@ -60,7 +60,7 @@ func (this *QGUI) newModelsTable() *widget.Table {
 		}
 	}
 
-	table.SetColumnWidth(0, 250) // Actions
+	table.SetColumnWidth(0, 280) // Actions
 	table.SetColumnWidth(1, 220) // Name
 	table.SetColumnWidth(2, 80)  // Type
 	table.SetColumnWidth(3, 90)  // Status
@@ -81,6 +81,7 @@ func modelsCellFactory() fyne.CanvasObject {
 		widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), nil),
 		widget.NewButtonWithIcon("", theme.DeleteIcon(), nil),
 		widget.NewButtonWithIcon("Logs", theme.FileTextIcon(), nil),
+		widget.NewButtonWithIcon("Open", theme.ComputerIcon(), nil),
 	)
 }
 
@@ -92,14 +93,17 @@ func runningModelCellFactory() fyne.CanvasObject {
 }
 
 // updateModelCell fills one cell of the model table: a label for the data
-// columns, and the row's actions (start/stop, delete, logs) in the first
-// column.
+// columns, and the row's actions (start/stop, delete, logs, and open when the
+// model's metadata records a page) in the first column.
 func (this *QGUI) updateModelCell(m modelDefinitions.Model, id widget.TableCellID, cell *fyne.Container) {
 	cell.RemoveAll()
 	if id.Col == 0 {
 		cell.Add(this.modelActionButton(m))
 		cell.Add(this.modelDeleteButton(m))
 		cell.Add(this.modelLogsButton(m))
+		if m.ModelURL != "" {
+			cell.Add(this.modelOpenButton(m))
+		}
 	} else {
 		label := widget.NewLabel(modelCell(m, id.Col))
 		label.Wrapping = fyne.TextWrapOff
@@ -145,6 +149,16 @@ func (this *QGUI) modelLogsButton(m modelDefinitions.Model) *widget.Button {
 		button.Disable()
 	}
 	return button
+}
+
+// modelOpenButton builds the open button for a model's table row: it opens
+// the model's page at its source (eg its card on a model hub) in the system
+// browser. It is shown only for models whose metadata records a page, with
+// the same behaviour as the Open button on the Model Search screen.
+func (this *QGUI) modelOpenButton(m modelDefinitions.Model) *widget.Button {
+	return widget.NewButtonWithIcon("Open", theme.ComputerIcon(), func() {
+		this.openModelCard(m.ModelURL)
+	})
 }
 
 // confirmDeleteModel asks the user to confirm deleting the named model before

@@ -314,6 +314,44 @@ func TestDownloadModelLicence(t *testing.T) {
 	}
 }
 
+// TestDownloadModelModelURL verifies a scanned model's page at its source
+// (ModelURL) is stored in the model's metadata, so the page can be opened
+// from the installed model later.
+func TestDownloadModelModelURL(t *testing.T) {
+	home := withHome(t)
+	server := servingModelServer(t, "gguf-bytes")
+	defer server.Close()
+
+	repo := NewLocalRepository()
+	err := repo.DownloadModel(&definitions.RemoteModel{
+		ModelFamily: "org",
+		ModelName:   "a",
+		ModelSource: "ZTest",
+		ModelType:   "gguf",
+		ModelURL:    "https://huggingface.co/org/a",
+		Variants: []definitions.ModelVariant{
+			{FileName: "a.gguf", Location: server.URL + "/a.gguf"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("DownloadModel: %v", err)
+	}
+
+	m := repo.GetModel("org/a")
+	if m == nil {
+		t.Fatal("expected the downloaded model to be listed")
+	}
+	if m.ModelURL != "https://huggingface.co/org/a" {
+		t.Errorf("model URL = %q, want https://huggingface.co/org/a", m.ModelURL)
+	}
+
+	wantDir := path.Join(home, ".quesadilla", "models", "gguf", "org", "a")
+	qm := readQModel(t, wantDir)
+	if qm.ModelURL != "https://huggingface.co/org/a" {
+		t.Errorf("qmodel URL = %q, want https://huggingface.co/org/a", qm.ModelURL)
+	}
+}
+
 // TestDownloadModelUnknownType verifies only gguf models can be installed.
 func TestDownloadModelUnknownType(t *testing.T) {
 	withHome(t)
@@ -436,6 +474,7 @@ func TestLinkScannedModel(t *testing.T) {
 		ModelName:   "linked-model",
 		ModelSource: "LocalAI",
 		ModelType:   "gguf",
+		ModelURL:    "https://huggingface.co/localai/linked-model",
 		Variants: []definitions.ModelVariant{
 			{FileName: "linked.gguf", Location: srcFile},
 		},
@@ -469,6 +508,12 @@ func TestLinkScannedModel(t *testing.T) {
 	}
 	if qm.ModelSource != "LocalAI" {
 		t.Errorf("qmodel source = %q, want LocalAI", qm.ModelSource)
+	}
+	if m.ModelURL != "https://huggingface.co/localai/linked-model" {
+		t.Errorf("model URL = %q, want https://huggingface.co/localai/linked-model", m.ModelURL)
+	}
+	if qm.ModelURL != "https://huggingface.co/localai/linked-model" {
+		t.Errorf("qmodel URL = %q, want https://huggingface.co/localai/linked-model", qm.ModelURL)
 	}
 	if len(qm.Variants) != 1 {
 		t.Fatalf("qmodel variants = %d, want 1", len(qm.Variants))

@@ -58,6 +58,7 @@ type Model struct {
 	ModelFile      string // the file to run: the model's first variant, resolved to a path
 	Variants       []ModelVariant
 	ModelSource    string // name of the scanner that found the model
+	ModelURL       string // URL of the model's page at its source, if known
 	LicenceName    string // eg "apache-2.0"
 	LicenceFile    string // path to the stored licence file, if one was stored
 }
@@ -82,13 +83,15 @@ type RemoteModel struct {
 
 // QModel is the on-disk metadata (qmodel.json) of an installed model: what
 // the model is (family, name), where it came from (source), what type it is,
-// the variants that can be run, and its licence, if any. The family and name
+// the model's page at its source (ModelURL, eg its card on a model hub), the
+// variants that can be run, and its licence, if any. The family and name
 // match the model's directory (<ModelFamily>/<ModelName>).
 type QModel struct {
 	ModelFamily string         `json:"ModelFamily"`
 	ModelName   string         `json:"ModelName"`
 	ModelSource string         `json:"ModelSource"`
 	ModelType   string         `json:"ModelType"`
+	ModelURL    string         `json:"ModelURL,omitempty"`
 	Variants    []ModelVariant `json:"Variants"`
 	LicenceName string         `json:"LicenceName,omitempty"`
 	LicenceFile string         `json:"LicenceFile,omitempty"`
