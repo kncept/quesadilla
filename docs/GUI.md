@@ -72,7 +72,10 @@ on), then the **File** they act on.
 - **HuggingFace** lists popular GGUF models from the HuggingFace hub, and shows
   a search box above the results: submitting a query (or pressing Enter) runs a
   hub search for matching GGUF models, while an empty query lists the popular
-  ones again. A repository holding several GGUF files is listed as one row per
+  ones again. A query that names a model directly - a model page URL (eg
+  "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF") or the model's hub id (eg
+  "unsloth/Qwen3.8-27B-GGUF") - fetches that model on its own instead of
+  searching. A repository holding several GGUF files is listed as one row per
   file, so a specific quantization can be downloaded; the model's name and type
   are shown only on the group's first row, so the group reads as one model.
 - **LocalAI** lists models installed by localai.

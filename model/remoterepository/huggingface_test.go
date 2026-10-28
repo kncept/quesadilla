@@ -327,8 +327,9 @@ func TestHuggingFaceScanForQueryEmpty(t *testing.T) {
 }
 
 // TestHuggingFaceModelIDFromQuery verifies which queries are recognized as
-// HuggingFace model page URLs: an http(s) URL on a HuggingFace host whose path
-// is the model's id (exactly two segments, "org/name").
+// naming a model directly: an http(s) URL on a HuggingFace host whose path is
+// the model's id (exactly two segments, "org/name"), or a bare hub id
+// ("org/name").
 func TestHuggingFaceModelIDFromQuery(t *testing.T) {
 	tests := []struct {
 		query string
@@ -346,7 +347,18 @@ func TestHuggingFaceModelIDFromQuery(t *testing.T) {
 		{"https://huggingface.co/acme/Ggufy/resolve/main/Ggufy-Q4.gguf", ""}, // a file URL
 		{"https://example.org/acme/Ggufy", ""},                               // not a HuggingFace host
 		{"https://huggingface.co.evil.org/acme/Ggufy", ""},                   // a lookalike host
-		{"llama", ""},
+		{"mailto:acme/Ggufy", ""},                                            // a non-http URL
+		{"unsloth/Qwen3.8-27B-GGUF", "unsloth/Qwen3.8-27B-GGUF"},             // a bare hub id
+		{"acme/Ggufy", "acme/Ggufy"},
+		{"  acme/Ggufy  ", "acme/Ggufy"},
+		{"llama", ""},           // no slash: a plain search
+		{"acme", ""},            // no slash: a plain search
+		{"acme/Ggufy/tree", ""}, // too many slashes
+		{"acme/Ggufy/", ""},     // a trailing slash is not a hub id
+		{"acme/ Ggufy", ""},     // a search with spaces
+		{"unsloth / Qwen", ""},  // a search with spaces
+		{"/Ggufy", ""},          // no org
+		{"acme/", ""},           // no name
 		{"https://huggingface.co", ""},
 		{"", ""},
 	}
@@ -482,6 +494,100 @@ func TestHuggingFaceScanForQueryNonHfURL(t *testing.T) {
 	}
 	if fetched {
 		t.Errorf("requests = %v, want no single-model fetch for a non-HuggingFace URL", *requests)
+	}
+}
+
+// TestHuggingFaceScanForQueryModelID verifies a query that is a bare hub id
+// (eg "acme/Ggufy") lists that model on its own, fetching it directly from the
+// hub (and its tree, for the variants) rather than running a hub search.
+func TestHuggingFaceScanForQueryModelID(t *testing.T) {
+	requests := &[]string{}
+	server := hfTestServer(t, requests)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	models, err := NewHuggingFaceScanner().ScanForQuery("acme/Ggufy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].FullModelName() != "acme/Ggufy" {
+		t.Fatalf("models = %+v, want just acme/Ggufy", models)
+	}
+	if models[0].ModelSource != HuggingFaceScannerName {
+		t.Errorf("source = %q, want %q", models[0].ModelSource, HuggingFaceScannerName)
+	}
+	if len(models[0].Variants) != 2 {
+		t.Errorf("variants = %v, want both of the model's GGUF files", models[0].Variants)
+	}
+
+	var fetched, tree, searched bool
+	for _, request := range *requests {
+		if request == "/api/models/acme/Ggufy" {
+			fetched = true
+		}
+		if strings.HasPrefix(request, "/api/models/acme/Ggufy/tree/main") {
+			tree = true
+		}
+		if strings.Contains(request, "search=") {
+			searched = true
+		}
+	}
+	if !fetched {
+		t.Errorf("requests = %v, want the single-model fetch /api/models/acme/Ggufy", *requests)
+	}
+	if !tree {
+		t.Errorf("requests = %v, want the model's tree fetch", *requests)
+	}
+	if searched {
+		t.Errorf("requests = %v, want no hub search for a bare model id", *requests)
+	}
+}
+
+// TestHuggingFaceScanForQueryModelIDIgnoresTypes verifies a bare hub id is
+// fetched regardless of the type filters: the id names the model the user
+// wants, so the filters do not apply to it.
+func TestHuggingFaceScanForQueryModelIDIgnoresTypes(t *testing.T) {
+	server := hfTestServer(t, nil)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	// acme/Onny holds only ONNX files, yet a gguf-only filter is selected
+	models, err := NewHuggingFaceScanner().ScanForQueryWithTypes("acme/Onny", []string{"gguf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].FullModelName() != "acme/Onny" {
+		t.Fatalf("models = %+v, want just acme/Onny", models)
+	}
+}
+
+// TestHuggingFaceScanForQuerySlashWithSpaces verifies a query with spaces (even
+// one with a slash in it) is searched for as a plain query, not fetched as a
+// model.
+func TestHuggingFaceScanForQuerySlashWithSpaces(t *testing.T) {
+	requests := &[]string{}
+	server := hfTestServer(t, requests)
+	defer server.Close()
+	hfBaseURL = server.URL
+
+	models, err := NewHuggingFaceScanner().ScanForQuery("acme/ ggufy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the test server answers any search with acme/Searched (kept) and
+	// acme/Plain (trimmed, no runnable variants)
+	if len(models) != 1 || models[0].FullModelName() != "acme/Searched" {
+		t.Fatalf("models = %+v, want the search result acme/Searched", models)
+	}
+
+	var searched bool
+	for _, request := range *requests {
+		if strings.Contains(request, "search=") {
+			searched = true
+		}
+	}
+	if !searched {
+		t.Errorf("requests = %v, want a hub search for the spaced query", *requests)
 	}
 }
 

@@ -140,9 +140,10 @@ func (this *HuggingFaceScanner) ScanForModels() ([]definitions.RemoteModel, erro
 
 // ScanForQuery implements [definitions.QueryModelScanner]. It runs a single
 // hub search for the query (limited to GGUF and ONNX models) and lists what it finds,
-// trimming models without a runnable GGUF or ONNX file. A query that is a HuggingFace
-// model page URL names one model directly, so that model is fetched on its own. An
-// empty query falls back to the scanner's default listing.
+// trimming models without a runnable GGUF or ONNX file. A query that names a model
+// directly - a HuggingFace model page URL, or the model's hub id (eg
+// "unsloth/Qwen3.8-27B-GGUF") - fetches that model on its own. An empty query
+// falls back to the scanner's default listing.
 func (this *HuggingFaceScanner) ScanForQuery(query string) ([]definitions.RemoteModel, error) {
 	return this.ScanForQueryWithTypes(query, []string{string(definitions.ModelTypeGGUF), string(definitions.ModelTypeONNX)})
 }
@@ -150,14 +151,15 @@ func (this *HuggingFaceScanner) ScanForQuery(query string) ([]definitions.Remote
 // ScanForQueryWithTypes runs a hub search for the query, filtered by the given
 // model types (e.g., "gguf", "onnx"). An empty query runs a search with just the
 // model type filters (no text search). An empty modelTypes slice means no type
-// filtering. A query that is a HuggingFace model page URL (eg
-// "https://huggingface.co/org/name") skips the search and fetches that one model
+// filtering. A query that names a model directly (a HuggingFace model page URL,
+// eg "https://huggingface.co/org/name", or the model's hub id, eg
+// "unsloth/Qwen3.8-27B-GGUF") skips the search and fetches that one model
 // directly, ignoring the type filters.
 func (this *HuggingFaceScanner) ScanForQueryWithTypes(query string, modelTypes []string) ([]definitions.RemoteModel, error) {
-	// A model page URL names the model directly, so it is fetched on its own:
-	// the hub's search is a fuzzy text search, which would not reliably return
-	// the model a pasted URL points at, and the type filters do not apply to a
-	// model the user asked for by name.
+	// A query that names the model directly (a page URL or a bare hub id) is
+	// fetched on its own: the hub's search is a fuzzy text search, which would
+	// not reliably return the model the user asked for by name, and the type
+	// filters do not apply to it.
 	if modelID := modelIDFromQuery(query); modelID != "" {
 		return this.listModel(modelID)
 	}
@@ -194,26 +196,41 @@ func (this *HuggingFaceScanner) ScanForQueryWithTypes(query string, modelTypes [
 	return models, nil
 }
 
-// modelIDFromQuery reports whether the query is a HuggingFace model page URL
-// (eg "https://huggingface.co/org/name"), and returns the model's id ("org/name")
-// if so. A query that is not such a URL yields "".
+// modelIDFromQuery reports whether the query names a model directly: either a
+// HuggingFace model page URL (eg "https://huggingface.co/org/name") or the
+// model's hub id itself (eg "unsloth/Qwen3.8-27B-GGUF"). It returns the
+// model's id ("org/name") when so, or "" when the query is a plain search.
 func modelIDFromQuery(query string) string {
-	u, err := url.Parse(strings.TrimSpace(query))
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+	q := strings.TrimSpace(query)
+	u, err := url.Parse(q)
+	if err == nil && u.Scheme != "" {
+		// a URL names the model only when it is a HuggingFace model page
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return ""
+		}
+		host := strings.ToLower(u.Hostname())
+		if host != "huggingface.co" && host != "hf.co" {
+			return ""
+		}
+		// a model page URL is the host followed by the model's id: exactly two
+		// path segments, "org/name" (a tree or file URL has more, a search page
+		// has none)
+		segments := strings.Split(strings.Trim(u.Path, "/"), "/")
+		if len(segments) != 2 || segments[0] == "" || segments[1] == "" {
+			return ""
+		}
+		return segments[0] + "/" + segments[1]
+	}
+	// a bare hub id names the model too: exactly one slash, no spaces, and
+	// both parts non-empty (a plain search has no slash, or contains spaces)
+	if strings.ContainsAny(q, " \t") || strings.Count(q, "/") != 1 {
 		return ""
 	}
-	host := strings.ToLower(u.Hostname())
-	if host != "huggingface.co" && host != "hf.co" {
+	org, name, _ := strings.Cut(q, "/")
+	if org == "" || name == "" {
 		return ""
 	}
-	// a model page URL is the host followed by the model's id: exactly two
-	// path segments, "org/name" (a tree or file URL has more, a search page
-	// has none)
-	segments := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(segments) != 2 || segments[0] == "" || segments[1] == "" {
-		return ""
-	}
-	return segments[0] + "/" + segments[1]
+	return q
 }
 
 // listModel lists the single model with the given hub id: it fetches the model

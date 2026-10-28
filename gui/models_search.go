@@ -591,7 +591,7 @@ func (this *QGUI) runHuggingFaceSearchWithTypes(scanner *remoterepository.Huggin
 // and checkboxes for filtering by model type (driven from the backends we support).
 func (this *QGUI) newSearchQueryBar() {
 	this.searchQueryEntry = widget.NewEntry()
-	this.searchQueryEntry.SetPlaceHolder("Search HuggingFace models, or paste a model URL...")
+	this.searchQueryEntry.SetPlaceHolder("Search HuggingFace models, or paste a model URL or name (org/name)...")
 	this.searchQueryEntry.OnSubmitted = func(string) {
 		this.runHuggingFaceSearch()
 	}
