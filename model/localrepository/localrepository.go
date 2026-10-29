@@ -243,7 +243,7 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 			if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
 				return nil
 			}
-			variant.EmbeddedMetadata = ggufMeta.StringifiedMetadata()
+			variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
 			variant.SupportsVision = ggufMeta.HasVision
 
 		}
@@ -330,7 +330,7 @@ func (this *LocalRepository) UpdateModelMetadata(scannedModel *definitions.Remot
 			if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
 				return nil
 			}
-			qm.Variants[i].EmbeddedMetadata = ggufMeta.StringifiedMetadata()
+			qm.Variants[i].EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
 			qm.Variants[i].SupportsVision = ggufMeta.HasVision
 
 		}
@@ -690,7 +690,7 @@ func loadOrMigrateQModel(dir, family, name string, ext string) (definitions.QMod
 				if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
 					return qm, false
 				}
-				variant.EmbeddedMetadata = ggufMeta.StringifiedMetadata()
+				variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
 				variant.SupportsVision = ggufMeta.HasVision
 			}
 			qm.Variants = append(qm.Variants, variant)
@@ -737,7 +737,7 @@ func reconcileVariants(qm *definitions.QModel, dir string, ext string) {
 				if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
 					return
 				}
-				variant.EmbeddedMetadata = ggufMeta.StringifiedMetadata()
+				variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
 				variant.SupportsVision = ggufMeta.HasVision
 			}
 			qm.Variants = append(qm.Variants, variant)

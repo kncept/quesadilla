@@ -254,3 +254,17 @@ func getStringFromMetadata(raw map[string]any, key string) (string, error) {
 	}
 	return str, nil
 }
+
+func (m *GGUFMetadata) StringifiedRawMetadata() map[string]string {
+	result := make(map[string]string)
+
+	// Convert raw metadata to string values
+	for key, val := range m.Raw {
+		if str, ok := val.(string); ok {
+			result[key] = str
+		} else {
+			result[key] = fmt.Sprintf("%v", val)
+		}
+	}
+	return result
+}

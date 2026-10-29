@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"fmt"
 	"path"
 	"sync"
 	"sync/atomic"
@@ -11,8 +12,8 @@ import (
 
 // JobManager manages the list of active jobs.
 type JobManager struct {
-	mu      sync.RWMutex
-	jobs    []*Job
+	mu       sync.RWMutex
+	jobs     []*Job
 	onChange atomic.Value
 }
 
@@ -44,6 +45,7 @@ func (m *JobManager) AddJob(jobType JobType, name, source, destination, modelNam
 		Started:     time.Now(),
 		Progress:    -1,
 	}
+	fmt.Printf("Job added: %+v\n", job)
 	m.mu.Lock()
 	m.jobs = append(m.jobs, job)
 	m.mu.Unlock()
