@@ -44,10 +44,23 @@ Has a 'back' button at the bottom that closes the window
 Installed Models (including config and running stats)
 Each row's actions are in the leftmost column: a start/stop button, a delete
 button (which asks for confirmation before removing the model), a logs
-button that is enabled only while the model is running, and - for models whose
-metadata records a page at their source (stored when the model was downloaded
-or linked) - an Open button that opens the model's page in the system browser,
-the same behaviour as the Open button on the Model Search page.
+button that is enabled only while the model is running, a Details button that
+opens the Model Details page for that model, and - for models whose metadata
+records a page at their source (stored when the model was downloaded or linked)
+- an Open button that opens the model's page in the system browser, the same
+behaviour as the Open button on the Model Search page.
+
+## Model Details Page
+Metadata for one installed model at a time. A dropdown at the top selects the
+model to inspect. Below it the page is laid out like the Model Search page: a
+menu on the left, with the selected view on the right.
+
+The left menu holds **Model**, then **Download** (only for models that can fetch
+more variants, eg HuggingFace models), then one row per installed variant.
+Selecting **Model** or a variant shows its metadata on the right. Selecting
+**Download** shows a table of the model's downloadable variants, with a
+**Download** button for each variant that is not installed yet; variants that
+are already downloaded are listed without a button.
 
 ### Scan Models Section
 Includes a 'scan' section where Models can be scanned, and can be linked or unlinked.
@@ -104,6 +117,17 @@ Results carry action buttons in the action column:
   pointing at its files where they are (nothing is copied), and an **Import**
   button, which copies the model's files into quesadilla's data directory like
   a normal download.
+
+## Downloads Page
+Lists every download and download job currently in progress, with its name,
+source, destination and elapsed time. Downloads start in the background and
+leave the list once they finish, whether they succeeded or failed; the screen
+refreshes automatically while it is open.
+
+Downloads started from the Model Search and Model Details screens are listed
+here too: a model download job stays listed until all of its files have been
+fetched and its screen has been updated. Linking a model does not download
+anything, so it is not listed.
 
 # Technology
 

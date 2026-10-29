@@ -729,6 +729,13 @@ func (this *QGUI) installModel(m modelDefinitions.RemoteModel, variantFile strin
 	this.searchStatusLabel.Show()
 	this.searchStatusLabel.SetText(fmt.Sprintf("%sing %s...", action.verb, m.FullModelName()))
 
+	// Links do not copy or download anything, so only the download jobs are
+	// listed on the Downloads screen.
+	var download *activeDownload
+	if !action.link {
+		download = this.addDownload(downloadJobName(action, m.FullModelName(), variantFile), m.ModelURL, "")
+	}
+
 	go func() {
 		var err error
 		scanner := this.QApp.RemoteModels.GetScanner(m.ModelSource)
@@ -748,6 +755,9 @@ func (this *QGUI) installModel(m modelDefinitions.RemoteModel, variantFile strin
 		}
 		fyne.Do(func() {
 			this.finishModelAction(action, m.FullModelName(), err)
+			// the download is finished once its completion has updated the
+			// screen, so take it off the active list last
+			this.removeDownload(download)
 		})
 	}()
 }
@@ -792,4 +802,5 @@ func (this *QGUI) finishModelAction(action modelInstallAction, modelName string,
 	if this.modelsTable != nil {
 		this.modelsTable.Refresh()
 	}
+	this.refreshModelDetailsContent()
 }

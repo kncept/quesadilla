@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/kncept/quesadilla/backend/running"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	"github.com/kncept/quesadilla/model/remoterepository"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
@@ -198,6 +200,7 @@ func (this *QGUI) deleteModel(modelName string) {
 	if this.modelsTable != nil {
 		this.modelsTable.Refresh()
 	}
+	this.refreshModelDetailsContent()
 }
 
 // runningModelFor returns the running model with the given name, or nil when
@@ -373,95 +376,222 @@ func formatUptime(d time.Duration) string {
 	}
 }
 
-// modelDetailsPage renders the Model Details screen: a dropdown to select a
-// model, and the selected model's metadata and variant details.
-func (this *QGUI) modelDetailsPage() fyne.CanvasObject {
-	// Initialize the display container if needed
-	if this.modelDetailsDisplay == nil {
-		this.modelDetailsDisplay = container.NewVBox()
-	}
-	// This will be populated when the page is shown
-	this.modelDetailsContent = container.NewVBox()
-	this.refreshModelDetailsContent()
-	return container.NewPadded(this.modelDetailsContent)
+// modelDetailRow is one row of the Model Details left menu: the "Model" entry,
+// the optional "Download" entry, or one of the model's variants.
+type modelDetailRow struct {
+	label        string
+	kind         string // "model", "download" or "variant"
+	variantIndex int    // only for "variant" rows
 }
 
-// refreshModelDetailsContent rebuilds the Model Details screen content.
+// modelDetailsPage renders the Model Details screen: a dropdown to select a
+// model at the top, then a split view like Model Search - a left menu holding
+// "Model", "Download" (for models that can fetch more variants) and one row per
+// variant, beside the selected view.
+func (this *QGUI) modelDetailsPage() fyne.CanvasObject {
+	header := container.NewVBox(
+		headingLabel("Model Details"),
+		wrappedLabel("Metadata for an installed model and each of its variants."),
+		widget.NewSeparator(),
+	)
+
+	this.modelDetailsSelect = widget.NewSelect(nil, func(selected string) {
+		this.showModelDetailsContent(selected)
+	})
+	this.modelDetailsSelect.PlaceHolder = "Select a model..."
+
+	this.modelDetailsList = widget.NewList(
+		func() int {
+			return len(this.modelDetailsRows)
+		},
+		func() fyne.CanvasObject {
+			label := widget.NewLabel("________________________________")
+			label.Wrapping = fyne.TextWrapOff
+			return container.NewPadded(label)
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id < 0 || id >= len(this.modelDetailsRows) {
+				return
+			}
+			obj.(*fyne.Container).Objects[0].(*widget.Label).SetText(this.modelDetailsRows[id].label)
+		},
+	)
+	this.modelDetailsList.OnSelected = func(id widget.ListItemID) {
+		this.selectModelDetailsRow(int(id))
+	}
+
+	// The three right-hand views: the model's metadata, the selected variant's
+	// metadata, and the downloadable-variants table. The model and variant
+	// views scroll; the download view is a stack so its table fills the space
+	// (a table inside a scroll would only get its minimum height).
+	this.modelDetailsModelView = container.NewVBox()
+	this.modelDetailsVariantView = container.NewVBox()
+	this.modelDetailsDownloadView = container.NewStack()
+	this.modelDetailsModelScroll = container.NewVScroll(this.modelDetailsModelView)
+	this.modelDetailsVariantScroll = container.NewVScroll(this.modelDetailsVariantView)
+	this.modelDetailsStack = container.NewStack(
+		this.modelDetailsModelScroll,
+		this.modelDetailsVariantScroll,
+		this.modelDetailsDownloadView,
+	)
+
+	split := container.NewHSplit(
+		container.NewPadded(this.modelDetailsList),
+		container.NewPadded(this.modelDetailsStack),
+	)
+	split.SetOffset(0.3)
+
+	this.modelDetailsContent = container.NewBorder(
+		container.NewVBox(
+			this.modelDetailsSelect,
+			widget.NewSeparator(),
+		),
+		nil, nil, nil,
+		split,
+	)
+
+	this.refreshModelDetailsContent()
+
+	return container.NewPadded(container.NewBorder(header, nil, nil, nil, this.modelDetailsContent))
+}
+
+// refreshModelDetailsContent rebuilds the dropdown's options and re-renders the
+// currently selected model.
 func (this *QGUI) refreshModelDetailsContent() {
-	if this.modelDetailsContent == nil {
+	if this.modelDetailsSelect == nil {
 		return
 	}
 
 	models := this.QApp.LocalModels.Models()
-	if len(models) == 0 {
-		this.modelDetailsContent.RemoveAll()
-		this.modelDetailsContent.Add(wrappedLabel("No models installed."))
-		this.modelDetailsContent.Refresh()
+	modelNames := make([]string, 0, len(models))
+	for _, m := range models {
+		modelNames = append(modelNames, m.FullModelName())
+	}
+
+	this.modelDetailsSelect.Options = modelNames
+	this.modelDetailsSelect.Refresh()
+
+	if len(modelNames) == 0 {
+		this.modelDetailsSelected = ""
+		this.modelDetailsRows = nil
+		this.modelDetailsList.Refresh()
+		this.showModelDetailsMessage("No models installed.")
 		return
 	}
 
-	// Build the dropdown options
-	modelNames := make([]string, len(models))
-	for i, m := range models {
-		modelNames[i] = m.FullModelName()
+	// Keep the current selection when it still exists, otherwise pick the
+	// first installed model.
+	selected := this.modelDetailsSelected
+	if this.QApp.LocalModels.GetModel(selected) == nil {
+		selected = modelNames[0]
 	}
-
-	// Create or reuse the dropdown
-	if this.modelDetailsSelect == nil {
-		this.modelDetailsSelect = widget.NewSelect(modelNames, func(selected string) {
-			this.showModelDetailsContent(selected)
-		})
-		this.modelDetailsSelect.PlaceHolder = "Select a model..."
-	} else {
-		this.modelDetailsSelect.Options = modelNames
-		this.modelDetailsSelect.Refresh()
-	}
-
-	// If no model is selected yet, select the first one
-	if this.modelDetailsSelected == "" && len(modelNames) > 0 {
-		this.modelDetailsSelected = modelNames[0]
-		this.modelDetailsSelect.SetSelected(this.modelDetailsSelected)
-	}
-
-	// Build the header with the dropdown
-	header := container.NewVBox(
-		headingLabel("Model Details"),
-		this.modelDetailsSelect,
-		widget.NewSeparator(),
-	)
-
-	this.modelDetailsContent.RemoveAll()
-	this.modelDetailsContent.Add(header)
-	this.modelDetailsContent.Add(this.modelDetailsDisplay)
-	this.showModelDetailsContent(this.modelDetailsSelected)
-	this.modelDetailsContent.Refresh()
+	this.modelDetailsSelected = selected
+	this.modelDetailsSelect.SetSelected(selected)
+	this.showModelDetailsContent(selected)
 }
 
-// showModelDetailsContent displays the details for the selected model.
+// showModelDetailsContent rebuilds the left menu and the right-hand views for
+// the selected model.
 func (this *QGUI) showModelDetailsContent(modelName string) {
 	this.modelDetailsSelected = modelName
 	model := this.QApp.LocalModels.GetModel(modelName)
 	if model == nil {
-		this.modelDetailsDisplay.RemoveAll()
-		this.modelDetailsDisplay.Add(wrappedLabel("Model not found: " + modelName))
-		this.modelDetailsDisplay.Refresh()
+		this.modelDetailsRows = nil
+		this.modelDetailsList.Refresh()
+		this.showModelDetailsMessage("Model not found: " + modelName)
 		return
 	}
 
-	this.modelDetailsDisplay.RemoveAll()
+	// Left menu: Model, then Download when the model can fetch more variants,
+	// then one row per installed variant.
+	rows := []modelDetailRow{{label: "Model", kind: "model"}}
+	if isHuggingFaceModel(*model) {
+		rows = append(rows, modelDetailRow{label: "Download", kind: "download"})
+	}
+	for i, v := range model.Variants {
+		rows = append(rows, modelDetailRow{label: v.FileName, kind: "variant", variantIndex: i})
+	}
+	this.modelDetailsRows = rows
+	this.modelDetailsList.Refresh()
 
-	// Model metadata section
-	metadataSection := this.buildModelMetadataSection(*model)
-	this.modelDetailsDisplay.Add(metadataSection)
+	// Model metadata view.
+	this.buildModelDetailsModelView(*model)
 
-	// Variants section
-	if len(model.Variants) > 0 {
-		variantsSection := this.buildVariantsSection(*model)
-		this.modelDetailsDisplay.Add(widget.NewSeparator())
-		this.modelDetailsDisplay.Add(variantsSection)
+	// Reset the variant view until a variant is picked.
+	this.modelDetailsVariantView.RemoveAll()
+	this.modelDetailsVariantView.Add(wrappedLabel("Select a variant to view its details."))
+	this.modelDetailsVariantView.Refresh()
+
+	// Download view: reset the downloadable-variants state when the selected
+	// model changes. The variants are fetched the first time the Download row
+	// is opened, so merely picking a model does not hit the network.
+	if isHuggingFaceModel(*model) {
+		if this.modelDetailsRemoteModel != modelName {
+			this.modelDetailsRemoteModel = modelName
+			this.modelDetailsRemoteVariants = nil
+			this.modelDetailsRemoteLoaded = false
+			this.modelDetailsRemoteLoading = false
+		}
+		this.buildModelDetailsDownloadView()
+	} else {
+		this.modelDetailsRemoteModel = modelName
+		this.modelDetailsRemoteVariants = nil
+		this.modelDetailsRemoteLoaded = true
+		this.modelDetailsRemoteLoading = false
+		this.modelDetailsDownloadView.RemoveAll()
+		this.modelDetailsDownloadView.Refresh()
 	}
 
-	this.modelDetailsDisplay.Refresh()
+	// Select the Model row by default.
+	this.selectModelDetailsRow(0)
+	this.modelDetailsList.Select(0)
+}
+
+// showModelDetailsMessage shows a message in place of the selected view, when
+// no model (or a deleted one) is selected.
+func (this *QGUI) showModelDetailsMessage(message string) {
+	this.modelDetailsModelView.RemoveAll()
+	this.modelDetailsModelView.Add(wrappedLabel(message))
+	this.modelDetailsModelView.Refresh()
+	this.showModelDetailsView(this.modelDetailsModelScroll)
+}
+
+// selectModelDetailsRow shows the view for the given left-menu row.
+func (this *QGUI) selectModelDetailsRow(id int) {
+	if id < 0 || id >= len(this.modelDetailsRows) {
+		return
+	}
+	row := this.modelDetailsRows[id]
+	model := this.QApp.LocalModels.GetModel(this.modelDetailsSelected)
+	if model == nil {
+		this.showModelDetailsMessage("Model not found: " + this.modelDetailsSelected)
+		return
+	}
+
+	switch row.kind {
+	case "model":
+		this.showModelDetailsView(this.modelDetailsModelScroll)
+	case "download":
+		this.loadModelDetailsRemoteVariants()
+		this.showModelDetailsView(this.modelDetailsDownloadView)
+	case "variant":
+		this.buildModelDetailsVariantView(*model, row.variantIndex)
+		this.showModelDetailsView(this.modelDetailsVariantScroll)
+	}
+}
+
+// showModelDetailsView shows one of the right-hand views and hides the others.
+func (this *QGUI) showModelDetailsView(show fyne.CanvasObject) {
+	if this.modelDetailsStack == nil {
+		return
+	}
+	for _, obj := range this.modelDetailsStack.Objects {
+		if obj == show {
+			obj.Show()
+		} else {
+			obj.Hide()
+		}
+	}
 }
 
 // buildModelMetadataSection creates a section showing the model's metadata.
@@ -495,106 +625,283 @@ func (this *QGUI) buildModelMetadataSection(m modelDefinitions.Model) fyne.Canva
 	return container.NewVBox(items...)
 }
 
-// buildVariantsSection creates a split view with a variant list on the left
-// and the selected variant's details on the right (similar to Model Search).
-func (this *QGUI) buildVariantsSection(m modelDefinitions.Model) fyne.CanvasObject {
-	if len(m.Variants) == 0 {
-		return container.NewVBox(
-			headingLabel("Variants (0)"),
-			wrappedLabel("No variants available."),
-		)
+// buildModelDetailsModelView fills the "Model" view with the model's metadata.
+func (this *QGUI) buildModelDetailsModelView(m modelDefinitions.Model) {
+	this.modelDetailsModelView.RemoveAll()
+	this.modelDetailsModelView.Add(this.buildModelMetadataSection(m))
+	this.modelDetailsModelView.Refresh()
+}
+
+// buildModelDetailsVariantView fills the variant view with the metadata of the
+// model's variant at the given index.
+func (this *QGUI) buildModelDetailsVariantView(m modelDefinitions.Model, index int) {
+	this.modelDetailsVariantView.RemoveAll()
+	if index < 0 || index >= len(m.Variants) {
+		this.modelDetailsVariantView.Add(wrappedLabel("Variant not found."))
+		this.modelDetailsVariantView.Refresh()
+		return
 	}
 
-	// Variant list on the left
-	variantNames := make([]string, len(m.Variants))
-	for i, v := range m.Variants {
-		variantNames[i] = v.FileName
+	v := m.Variants[index]
+	this.modelDetailsVariantView.Add(headingLabel("Variant: " + v.FileName))
+	this.modelDetailsVariantView.Add(widget.NewSeparator())
+
+	fields := []struct {
+		label  string
+		value  string
+		isBool bool
+	}{
+		{"File Name", v.FileName, false},
+		{"Description", v.Description, false},
+		{"Linked Model", fmt.Sprintf("%v", v.LinkedModel), true},
+		{"Location", v.Location, false},
+		{"File Size", formatFileSize(v.FileSize), false},
+		{"Imported At", importedAtText(v.ImportedAt), false},
+		{"Supports Vision", fmt.Sprintf("%v", v.SupportsVision), true},
 	}
 
-	// Find the longest name for the list template
-	longest := variantNames[0]
-	for _, name := range variantNames {
-		if len(name) > len(longest) {
-			longest = name
+	for _, f := range fields {
+		// Boolean fields are always shown (true or false); other fields are
+		// hidden when empty/zero.
+		if f.isBool || f.value != "" {
+			this.modelDetailsVariantView.Add(this.metadataRow(f.label, f.value))
 		}
 	}
+	this.modelDetailsVariantView.Refresh()
+}
 
-	variantList := widget.NewList(
-		func() int {
-			return len(m.Variants)
+// importedAtText formats an import time for display, or returns "" when the
+// time is unset.
+func importedAtText(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
+}
+
+// buildModelDetailsDownloadView fills the "Download" view with a table of the
+// model's downloadable variants. Variants already installed locally are shown
+// without a download button.
+func (this *QGUI) buildModelDetailsDownloadView() {
+	this.modelDetailsDownloadView.RemoveAll()
+
+	if this.modelDetailsRemoteLoading {
+		this.modelDetailsDownloadView.Add(wrappedLabel("Loading downloadable variants..."))
+		this.modelDetailsDownloadView.Refresh()
+		return
+	}
+
+	if len(this.modelDetailsRemoteVariants) == 0 {
+		this.modelDetailsDownloadView.Add(wrappedLabel("No downloadable variants found."))
+		this.modelDetailsDownloadView.Refresh()
+		return
+	}
+
+	// Snapshot the variants and model so the table's length and cells always
+	// agree, even if the shared fields change while it is rendered.
+	variants := append([]modelDefinitions.ModelVariant(nil), this.modelDetailsRemoteVariants...)
+	modelName := this.modelDetailsSelected
+
+	table := widget.NewTable(
+		func() (int, int) {
+			return len(variants), 3
 		},
 		func() fyne.CanvasObject {
-			label := widget.NewLabel(longest)
-			label.Wrapping = fyne.TextWrapOff
-			return container.NewPadded(label)
+			return container.NewHBox(widget.NewButtonWithIcon("Download", theme.DownloadIcon(), nil))
 		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			obj.(*fyne.Container).Objects[0].(*widget.Label).SetText(variantNames[id])
+		func(id widget.TableCellID, cell fyne.CanvasObject) {
+			this.updateModelDetailsDownloadCell(variants, modelName, id, cell.(*fyne.Container))
 		},
 	)
-
-	// Detail panel on the right - shows the selected variant's details
-	detailContainer := container.NewVBox()
-
-	// Function to update the detail panel
-	updateDetail := func(variantIndex int) {
-		if variantIndex < 0 || variantIndex >= len(m.Variants) {
-			return
+	table.ShowHeaderRow = true
+	table.CreateHeader = func() fyne.CanvasObject {
+		return widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	}
+	table.UpdateHeader = func(id widget.TableCellID, cell fyne.CanvasObject) {
+		switch id.Col {
+		case 0:
+			cell.(*widget.Label).SetText("File")
+		case 1:
+			cell.(*widget.Label).SetText("Size")
+		case 2:
+			cell.(*widget.Label).SetText("Action")
 		}
-		v := m.Variants[variantIndex]
-		detailContainer.RemoveAll()
+	}
+	table.SetColumnWidth(0, 300)
+	table.SetColumnWidth(1, 100)
+	table.SetColumnWidth(2, 140)
 
-		fields := []struct {
-			label string
-			value string
-			isBool bool
-		}{
-			{"File Name", v.FileName, false},
-			{"Description", v.Description, false},
-			{"Linked Model", fmt.Sprintf("%v", v.LinkedModel), true},
-			{"Location", v.Location, false},
-			{"File Size", formatFileSize(v.FileSize), false},
-			{"Imported At", v.ImportedAt.Format(time.RFC3339), false},
-			{"Supports Vision", fmt.Sprintf("%v", v.SupportsVision), true},
+	this.modelDetailsDownloadView.Add(table)
+	this.modelDetailsDownloadView.Refresh()
+}
+
+// updateModelDetailsDownloadCell fills one cell of the downloadable-variants
+// table: the file name and size, and a download button for variants that are
+// not installed yet (installed variants have no button).
+func (this *QGUI) updateModelDetailsDownloadCell(variants []modelDefinitions.ModelVariant, modelName string, id widget.TableCellID, cell *fyne.Container) {
+	cell.RemoveAll()
+	if id.Row < 0 || id.Row >= len(variants) {
+		cell.Refresh()
+		return
+	}
+	v := variants[id.Row]
+	switch id.Col {
+	case 0:
+		label := widget.NewLabel(v.FileName)
+		label.Wrapping = fyne.TextWrapOff
+		cell.Add(label)
+	case 1:
+		label := widget.NewLabel(formatFileSize(v.FileSize))
+		label.Wrapping = fyne.TextWrapOff
+		cell.Add(label)
+	case 2:
+		if !this.modelDetailsVariantInstalled(modelName, v.FileName) {
+			cell.Add(widget.NewButtonWithIcon("Download", theme.DownloadIcon(), func() {
+				this.downloadHuggingFaceVariant(v.FileName)
+			}))
 		}
+	}
+	cell.Refresh()
+}
 
-		detailContainer.Add(headingLabel(fmt.Sprintf("Variant: %s", v.FileName)))
-		detailContainer.Add(widget.NewSeparator())
+// modelDetailsVariantInstalled reports whether the named model already has a
+// variant with the given file name installed locally.
+func (this *QGUI) modelDetailsVariantInstalled(modelName string, fileName string) bool {
+	model := this.QApp.LocalModels.GetModel(modelName)
+	if model == nil {
+		return false
+	}
+	for _, v := range model.Variants {
+		if v.FileName == fileName {
+			return true
+		}
+	}
+	return false
+}
 
-		for _, f := range fields {
-			// For boolean fields, always show. For others, skip empty/zero.
-			if f.isBool || (f.value != "" && f.value != "0" && f.value != "0001-01-01T00:00:00Z") {
-				detailContainer.Add(this.metadataRow(f.label, f.value))
+// isHuggingFaceModel reports whether the model came from HuggingFace, whose
+// files can be fetched individually.
+func isHuggingFaceModel(m modelDefinitions.Model) bool {
+	return m.ModelSource == remoterepository.HuggingFaceScannerName
+}
+
+// huggingFaceModelID returns the Hub id ("org/name") of a model, taken from its
+// source URL when present, or from its full model name otherwise.
+func huggingFaceModelID(m modelDefinitions.Model) string {
+	u := strings.TrimSpace(m.ModelURL)
+	for _, prefix := range []string{
+		"https://huggingface.co/",
+		"http://huggingface.co/",
+		"https://hf.co/",
+		"http://hf.co/",
+	} {
+		if strings.HasPrefix(u, prefix) {
+			if id := strings.Trim(strings.TrimPrefix(u, prefix), "/"); id != "" {
+				return id
 			}
 		}
+	}
+	return m.FullModelName()
+}
 
-		detailContainer.Refresh()
+// loadModelDetailsRemoteVariants fetches the downloadable variants of the
+// selected HuggingFace model the first time the Download row is opened.
+func (this *QGUI) loadModelDetailsRemoteVariants() {
+	if this.modelDetailsRemoteLoaded || this.modelDetailsRemoteLoading {
+		return
+	}
+	model := this.QApp.LocalModels.GetModel(this.modelDetailsSelected)
+	if model == nil || !isHuggingFaceModel(*model) {
+		return
+	}
+	this.modelDetailsRemoteLoading = true
+	this.buildModelDetailsDownloadView()
+	this.fetchModelDetailsRemoteVariants(*model)
+}
+
+// fetchModelDetailsRemoteVariants fetches the downloadable variants of a
+// HuggingFace model in the background and then rebuilds the download view.
+func (this *QGUI) fetchModelDetailsRemoteVariants(m modelDefinitions.Model) {
+	modelName := m.FullModelName()
+	modelID := huggingFaceModelID(m)
+	go func() {
+		var variants []modelDefinitions.ModelVariant
+		scanner := this.QApp.RemoteModels.GetScanner(remoterepository.HuggingFaceScannerName)
+		if hfScanner, ok := scanner.(*remoterepository.HuggingFaceScanner); ok {
+			if remote := hfScanner.GetModel(modelID); remote != nil {
+				variants = remote.Variants
+			}
+		}
+		fyne.Do(func() {
+			// Ignore the result when the user has since picked another model.
+			if this.modelDetailsSelected != modelName {
+				return
+			}
+			this.modelDetailsRemoteLoading = false
+			this.modelDetailsRemoteLoaded = true
+			this.modelDetailsRemoteModel = modelName
+			this.modelDetailsRemoteVariants = variants
+			this.buildModelDetailsDownloadView()
+		})
+	}()
+}
+
+// downloadHuggingFaceVariant downloads a single variant of the currently
+// selected HuggingFace model, then refreshes the screen.
+func (this *QGUI) downloadHuggingFaceVariant(variantFileName string) {
+	model := this.QApp.LocalModels.GetModel(this.modelDetailsSelected)
+	if model == nil {
+		return
+	}
+	modelID := huggingFaceModelID(*model)
+	modelName := model.FullModelName()
+
+	scanner := this.QApp.RemoteModels.GetScanner(remoterepository.HuggingFaceScannerName)
+	hfScanner, ok := scanner.(*remoterepository.HuggingFaceScanner)
+	if !ok {
+		this.notifyError("HuggingFace scanner not available")
+		return
 	}
 
-	// Select the first variant by default
-	variantList.OnSelected = func(id widget.ListItemID) {
-		updateDetail(int(id))
-	}
-	if len(variantNames) > 0 {
-		updateDetail(0)
-		variantList.Select(0)
-	}
-
-	// Split view: list on left, details on right
-	left := container.NewBorder(
-		headingLabel(fmt.Sprintf("Variants (%d)", len(m.Variants))),
-		nil, nil, nil,
-		variantList,
+	download := this.addDownload(
+		fmt.Sprintf("Download %s (%s)", modelName, variantFileName),
+		model.ModelURL,
+		"",
 	)
 
-	right := container.NewPadded(
-		container.NewVScroll(detailContainer),
-	)
+	go func() {
+		remote := hfScanner.GetModel(modelID)
+		if remote == nil {
+			fyne.Do(func() {
+				this.notifyError(fmt.Sprintf("Could not find model %s on HuggingFace", modelID))
+				this.removeDownload(download)
+			})
+			return
+		}
 
-	split := container.NewHSplit(left, right)
-	split.SetOffset(0.3) // 30% for the list, 70% for details
-
-	return split
+		err := this.QApp.LocalModels.DownloadVariant(remote, variantFileName)
+		fyne.Do(func() {
+			if err != nil {
+				this.notifyError(fmt.Sprintf("Download failed: %v", err))
+				this.removeDownload(download)
+				return
+			}
+			if this.modelsTable != nil {
+				this.modelsTable.Refresh()
+			}
+			// Rebuild the screen: the new variant appears in the left menu,
+			// and its download button disappears.
+			if this.modelDetailsSelected == modelName {
+				this.showModelDetailsContent(modelName)
+				if this.modelDetailsList != nil && len(this.modelDetailsRows) > 1 {
+					this.modelDetailsList.Select(1) // the Download row
+				}
+			}
+			// the download is finished once its completion has updated the
+			// screen, so take it off the active list last
+			this.removeDownload(download)
+		})
+	}()
 }
 
 // metadataRow creates a label-value row for metadata display.

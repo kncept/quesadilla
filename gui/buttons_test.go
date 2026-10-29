@@ -57,8 +57,8 @@ func TestModelsTableButtonTap(t *testing.T) {
 	win.Resize(fyne.NewSize(900, 600))
 
 	buttons := findButtons(table, nil)
-	if len(buttons) != 3 {
-		t.Fatalf("found %d buttons in the rendered table, want 3 (start/stop, delete, logs)", len(buttons))
+	if len(buttons) != 4 {
+		t.Fatalf("found %d buttons in the rendered table, want 4 (start/stop, delete, logs, Details)", len(buttons))
 	}
 	var button *widget.Button
 	for _, b := range buttons {

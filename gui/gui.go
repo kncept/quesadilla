@@ -54,11 +54,32 @@ type QGUI struct {
 	noRunningLabel     *widget.Label
 	backendsTable      *widget.Table
 
-	// Model Details screen widgets
-	modelDetailsContent  *fyne.Container
-	modelDetailsDisplay  *fyne.Container
-	modelDetailsSelect   *widget.Select
-	modelDetailsSelected string
+	// Model Details screen widgets. The screen is laid out like Model Search:
+	// a dropdown at the top, then a left menu ("Model", optionally "Download",
+	// then one row per variant) beside the selected view.
+	modelDetailsContent        *fyne.Container
+	modelDetailsSelect         *widget.Select
+	modelDetailsSelected       string
+	modelDetailsList           *widget.List
+	modelDetailsRows           []modelDetailRow
+	modelDetailsModelView      *fyne.Container
+	modelDetailsVariantView    *fyne.Container
+	modelDetailsDownloadView   *fyne.Container
+	modelDetailsModelScroll    *container.Scroll
+	modelDetailsVariantScroll  *container.Scroll
+	modelDetailsStack          *fyne.Container
+	modelDetailsRemoteModel    string
+	modelDetailsRemoteVariants []modelDefinitions.ModelVariant
+	modelDetailsRemoteLoaded   bool
+	modelDetailsRemoteLoading  bool
+
+	// Active downloads and download jobs, shown on the Downloads screen. The
+	// list is guarded by downloadsMu because downloads finish in the
+	// background. Nil until the main window is built.
+	downloadsMu      sync.Mutex
+	downloads        []*activeDownload
+	downloadsTable   *widget.Table
+	noDownloadsLabel *widget.Label
 
 	// Sidebar list for programmatic tab switching
 	sidebarList *widget.List
@@ -254,8 +275,16 @@ func (this *QGUI) refreshDynamicPages() {
 			fyne.Do(func() { this.modelsTable.Refresh() })
 		}
 		if this.runningModelsTable != nil {
-			fyne.Do(func() { this.runningModelsTable.Refresh() })
-			this.updateRunningModelsVisibility()
+			fyne.Do(func() {
+				this.runningModelsTable.Refresh()
+				this.updateRunningModelsVisibility()
+			})
+		}
+		if this.downloadsTable != nil {
+			fyne.Do(func() {
+				this.downloadsTable.Refresh()
+				this.updateDownloadsVisibility()
+			})
 		}
 	})
 }
@@ -298,10 +327,10 @@ func (this *QGUI) showMainWindow() {
 // and a content view taking up the rest of the window.
 func (this *QGUI) mainContent() *fyne.Container {
 	// Sidebar menu items - one per screen, per docs/GUI.md
-	sidebarItems := []string{"Overview", "Models", "Model Details", "Backends", "Model Search"}
+	sidebarItems := []string{"Overview", "Models", "Model Details", "Backends", "Model Search", "Downloads"}
 
 	// One content page per sidebar item; only the selected page is shown.
-	pages := container.NewStack(this.overviewPage(), this.modelsPage(), this.modelDetailsPage(), this.backendsPage(), this.modelSearchPage())
+	pages := container.NewStack(this.overviewPage(), this.modelsPage(), this.modelDetailsPage(), this.backendsPage(), this.modelSearchPage(), this.downloadsPage())
 
 	// The list sizes itself to its template item, so use the longest item
 	// as the template to guarantee the sidebar is wide enough for all items.

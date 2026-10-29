@@ -54,7 +54,6 @@ func TestModelCell(t *testing.T) {
 		{1, "tiny-llama"},
 		{2, "gguf"},
 		{3, "idle"}, // not running
-		{4, "/models/gguf/tiny-llama/tiny-llama.gguf"},
 	}
 	for _, c := range cases {
 		if got := modelCell(m, c.col); got != c.want {
@@ -374,8 +373,8 @@ func TestModelsTableOpenButton(t *testing.T) {
 	}
 
 	pagedButtons := tableCellButtons(table, pagedRow, 0)
-	if len(pagedButtons) != 4 {
-		t.Fatalf("paged row buttons = %d, want 4 (start/stop, delete, logs, Open)", len(pagedButtons))
+	if len(pagedButtons) != 5 {
+		t.Fatalf("paged row buttons = %d, want 5 (start/stop, delete, logs, Open, Details)", len(pagedButtons))
 	}
 	open := findButtonByText(pagedButtons, "Open")
 	if open == nil {
@@ -386,13 +385,16 @@ func TestModelsTableOpenButton(t *testing.T) {
 		t.Errorf("opened URL = %q, want the model's page", opened)
 	}
 
-	// the model without a page: no Open button
+	// the model without a page: no Open button, but a Details button
 	bareButtons := tableCellButtons(table, bareRow, 0)
-	if len(bareButtons) != 3 {
-		t.Fatalf("bare row buttons = %d, want 3 (start/stop, delete, logs)", len(bareButtons))
+	if len(bareButtons) != 4 {
+		t.Fatalf("bare row buttons = %d, want 4 (start/stop, delete, logs, Details)", len(bareButtons))
 	}
 	if findButtonByText(bareButtons, "Open") != nil {
 		t.Error("did not expect an Open button on a model without a page")
+	}
+	if findButtonByText(bareButtons, "Details") == nil {
+		t.Error("expected a Details button on every model's actions")
 	}
 }
 
