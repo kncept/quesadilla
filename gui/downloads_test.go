@@ -43,7 +43,7 @@ func TestJobLifecycle(t *testing.T) {
 	destination := path.Join(t.TempDir(), "file.txt")
 
 	completed := make(chan error, 1)
-	g.startJob(jobs.JobRequest{
+	g.jobs.startJob(jobs.JobRequest{
 		Type:         jobs.JobTypeDownload,
 		Name:         "test download",
 		URL:          server.URL + "/file.txt",
@@ -55,7 +55,7 @@ func TestJobLifecycle(t *testing.T) {
 			}
 			completed <- err
 		},
-	})
+	}, func(modelName string) error { return nil })
 
 	select {
 	case err := <-completed:
@@ -97,12 +97,13 @@ func TestJobListedWhileActive(t *testing.T) {
 	g.jobsPage()
 	destination := path.Join(t.TempDir(), "file.txt")
 
-	g.startJob(jobs.JobRequest{
+	g.jobs.startJob(jobs.JobRequest{
 		Type:         jobs.JobTypeDownload,
 		Name:         "listed job",
 		URL:          server.URL + "/file.txt",
 		Destination:  destination,
-	})
+		OnComplete: func(err error) {},
+	}, func(modelName string) error { return nil })
 
 	select {
 	case <-started:
@@ -202,7 +203,7 @@ func TestJobProgress(t *testing.T) {
 	// Test with Content-Length
 	dest1 := path.Join(t.TempDir(), "with-length.txt")
 	done1 := make(chan struct{})
-	g.startJob(jobs.JobRequest{
+	g.jobs.startJob(jobs.JobRequest{
 		Type:         jobs.JobTypeDownload,
 		Name:         "with length",
 		URL:          serverWithLength.URL + "/file.txt",
@@ -210,7 +211,7 @@ func TestJobProgress(t *testing.T) {
 		OnComplete: func(error) {
 			close(done1)
 		},
-	})
+	}, func(modelName string) error { return nil })
 
 	// Wait for job to complete
 	select {
@@ -227,7 +228,7 @@ func TestJobProgress(t *testing.T) {
 	// Test without Content-Length
 	dest2 := path.Join(t.TempDir(), "no-length.txt")
 	done2 := make(chan struct{})
-	g.startJob(jobs.JobRequest{
+	g.jobs.startJob(jobs.JobRequest{
 		Type:         jobs.JobTypeDownload,
 		Name:         "no length",
 		URL:          serverNoLength.URL + "/file.txt",
@@ -235,7 +236,7 @@ func TestJobProgress(t *testing.T) {
 		OnComplete: func(error) {
 			close(done2)
 		},
-	})
+	}, func(modelName string) error { return nil })
 
 	select {
 	case <-done2:

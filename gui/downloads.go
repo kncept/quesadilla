@@ -17,14 +17,19 @@ func (this *QGUI) jobsPage() fyne.CanvasObject {
 	return this.jobsScreen.Content()
 }
 
+// AppJobs manages job-related operations for the application.
+type AppJobs struct {
+	jobManager *jobs.JobManager
+}
+
 // startJob starts a job using the job manager.
-func (this *QGUI) startJob(request jobs.JobRequest) {
+func (a *AppJobs) startJob(request jobs.JobRequest, refreshModelMetadata func(modelName string) error) {
 	switch request.Type {
 	case jobs.JobTypeDownload:
-		this.jobManager.StartDownloadJob(request)
+		a.jobManager.StartDownloadJob(request)
 	case jobs.JobTypeRefreshModelMetadata:
-		this.jobManager.StartMetadataRefreshJob(request, func() error {
-			return this.doRefreshModelMetadata(request.ModelName)
+		a.jobManager.StartMetadataRefreshJob(request, func() error {
+			return refreshModelMetadata(request.ModelName)
 		})
 	}
 }
@@ -141,7 +146,7 @@ func (this *QGUI) refreshModelMetadata() {
 		return
 	}
 
-	this.startJob(jobs.JobRequest{
+	this.jobs.startJob(jobs.JobRequest{
 		Type:      jobs.JobTypeRefreshModelMetadata,
 		Name:      fmt.Sprintf("Refresh metadata %s", modelName),
 		URL:       model.ModelURL,
@@ -161,5 +166,5 @@ func (this *QGUI) refreshModelMetadata() {
 				}
 			})
 		},
-	})
+	}, this.doRefreshModelMetadata)
 }

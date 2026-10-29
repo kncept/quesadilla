@@ -77,6 +77,7 @@ type QGUI struct {
 
 	// Job management
 	jobManager *jobs.JobManager
+	jobs       *AppJobs
 	jobsScreen *jobs.JobsScreen
 
 	// Sidebar list for programmatic tab switching
@@ -219,6 +220,7 @@ func CreateGui(SysLink SystemAgnosticOperations, qApp *qapp.QApp) *QGUI {
 		SysLink:   SysLink,
 		QApp:      qApp,
 		jobManager: jobs.NewJobManager(),
+		jobs:       &AppJobs{jobManager: jobs.NewJobManager()},
 	}
 }
 
