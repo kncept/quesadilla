@@ -337,14 +337,14 @@ func isLicenceFile(p string) bool {
 }
 
 // repoURL returns the hub URL of the model's page.
-func (m *hfModel) repoURL() string {
-	return fmt.Sprintf("%s/%s", hfBaseURL, m.ID)
+func (this *hfModel) repoURL() string {
+	return fmt.Sprintf("%s/%s", hfBaseURL, this.ID)
 }
 
 // resolveURL returns the download URL of a file within the model's default
 // branch.
-func (m *hfModel) resolveURL(filename string) string {
-	return fmt.Sprintf("%s/%s/resolve/main/%s", hfBaseURL, m.ID, url.PathEscape(filename))
+func (this *hfModel) resolveURL(filename string) string {
+	return fmt.Sprintf("%s/%s/resolve/main/%s", hfBaseURL, this.ID, url.PathEscape(filename))
 }
 
 // listModels fetches one page of the hub's models listing API.

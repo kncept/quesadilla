@@ -23,19 +23,19 @@ func NewJobManager() *JobManager {
 }
 
 // SetOnChange sets the callback to be called when the jobs list changes.
-func (m *JobManager) SetOnChange(fn func()) {
-	m.onChange.Store(fn)
+func (this *JobManager) SetOnChange(fn func()) {
+	this.onChange.Store(fn)
 }
 
 // NotifyChange calls the onChange callback if set.
-func (m *JobManager) NotifyChange() {
-	if fn, ok := m.onChange.Load().(func()); ok && fn != nil {
+func (this *JobManager) NotifyChange() {
+	if fn, ok := this.onChange.Load().(func()); ok && fn != nil {
 		fn()
 	}
 }
 
 // AddJob adds a new job and returns it.
-func (m *JobManager) AddJob(jobType JobType, name, source, destination, modelName string) *Job {
+func (this *JobManager) AddJob(jobType JobType, name, source, destination, modelName string) *Job {
 	job := &Job{
 		Type:        jobType,
 		Name:        name,
@@ -46,45 +46,45 @@ func (m *JobManager) AddJob(jobType JobType, name, source, destination, modelNam
 		Progress:    -1,
 	}
 	fmt.Printf("Job added: %+v\n", job)
-	m.mu.Lock()
-	m.jobs = append(m.jobs, job)
-	m.mu.Unlock()
-	m.NotifyChange()
+	this.mu.Lock()
+	this.jobs = append(this.jobs, job)
+	this.mu.Unlock()
+	this.NotifyChange()
 	return job
 }
 
 // RemoveJob removes a job from the list.
-func (m *JobManager) RemoveJob(job *Job) {
+func (this *JobManager) RemoveJob(job *Job) {
 	if job == nil {
 		return
 	}
-	m.mu.Lock()
-	for i, j := range m.jobs {
+	this.mu.Lock()
+	for i, j := range this.jobs {
 		if j == job {
-			m.jobs = append(m.jobs[:i], m.jobs[i+1:]...)
+			this.jobs = append(this.jobs[:i], this.jobs[i+1:]...)
 			break
 		}
 	}
-	m.mu.Unlock()
-	m.NotifyChange()
+	this.mu.Unlock()
+	this.NotifyChange()
 }
 
 // ActiveJobs returns a snapshot of current jobs.
-func (m *JobManager) ActiveJobs() []Job {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	jobs := make([]Job, len(m.jobs))
-	for i, job := range m.jobs {
+func (this *JobManager) ActiveJobs() []Job {
+	this.mu.RLock()
+	defer this.mu.RUnlock()
+	jobs := make([]Job, len(this.jobs))
+	for i, job := range this.jobs {
 		jobs[i] = *job
 	}
 	return jobs
 }
 
 // StartDownloadJob starts a download job in a goroutine.
-func (m *JobManager) StartDownloadJob(request JobRequest) {
-	job := m.AddJob(request.Type, request.Name, request.URL, request.Destination, request.ModelName)
+func (this *JobManager) StartDownloadJob(request JobRequest) {
+	job := this.AddJob(request.Type, request.Name, request.URL, request.Destination, request.ModelName)
 	go func() {
-		defer m.RemoveJob(job)
+		defer this.RemoveJob(job)
 
 		directory, fileName := path.Split(request.Destination)
 		if directory == "" {
@@ -97,12 +97,12 @@ func (m *JobManager) StartDownloadJob(request JobRequest) {
 				job.Progress = -1
 			}
 			job.Completed = false
-			m.NotifyChange()
+			this.NotifyChange()
 		})
 		job.Error = err
 		job.Completed = true
 		job.Progress = 100
-		m.NotifyChange()
+		this.NotifyChange()
 		if request.OnComplete != nil {
 			request.OnComplete(err)
 		}
@@ -110,16 +110,16 @@ func (m *JobManager) StartDownloadJob(request JobRequest) {
 }
 
 // StartMetadataRefreshJob starts a metadata refresh job in a goroutine.
-func (m *JobManager) StartMetadataRefreshJob(request JobRequest, refreshFunc func() error) {
-	job := m.AddJob(request.Type, request.Name, request.URL, request.Destination, request.ModelName)
+func (this *JobManager) StartMetadataRefreshJob(request JobRequest, refreshFunc func() error) {
+	job := this.AddJob(request.Type, request.Name, request.URL, request.Destination, request.ModelName)
 	go func() {
-		defer m.RemoveJob(job)
+		defer this.RemoveJob(job)
 
 		err := refreshFunc()
 		job.Error = err
 		job.Completed = true
 		job.Progress = 100
-		m.NotifyChange()
+		this.NotifyChange()
 		if request.OnComplete != nil {
 			request.OnComplete(err)
 		}
@@ -128,10 +128,10 @@ func (m *JobManager) StartMetadataRefreshJob(request JobRequest, refreshFunc fun
 
 // StartJob starts a generic job with a work function that receives a progress callback.
 // The work function should return an error.
-func (m *JobManager) StartJob(request JobRequest, work func(progress func(current, total int64)) error) {
-	job := m.AddJob(request.Type, request.Name, request.URL, request.Destination, request.ModelName)
+func (this *JobManager) StartJob(request JobRequest, work func(progress func(current, total int64)) error) {
+	job := this.AddJob(request.Type, request.Name, request.URL, request.Destination, request.ModelName)
 	go func() {
-		defer m.RemoveJob(job)
+		defer this.RemoveJob(job)
 
 		err := work(func(current, total int64) {
 			if total > 0 {
@@ -140,12 +140,12 @@ func (m *JobManager) StartJob(request JobRequest, work func(progress func(curren
 				job.Progress = -1
 			}
 			job.Completed = false
-			m.NotifyChange()
+			this.NotifyChange()
 		})
 		job.Error = err
 		job.Completed = true
 		job.Progress = 100
-		m.NotifyChange()
+		this.NotifyChange()
 		if request.OnComplete != nil {
 			request.OnComplete(err)
 		}

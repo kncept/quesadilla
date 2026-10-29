@@ -75,8 +75,8 @@ func ReadGGUFMetadata(filePath string) (*GGUFMetadata, error) {
 }
 
 // getString is a helper to get a string value from metadata
-func (m *GGUFMetadata) getString(key string) (string, error) {
-	val, ok := m.Raw[key]
+func (this *GGUFMetadata) getString(key string) (string, error) {
+	val, ok := this.Raw[key]
 	if !ok {
 		return "", fmt.Errorf("metadata key %q not found", key)
 	}
@@ -89,7 +89,7 @@ func (m *GGUFMetadata) getString(key string) (string, error) {
 
 // detectVisionCapabilities checks if the model has vision/multimodal capabilities
 // based on its architecture and other metadata
-func (m *GGUFMetadata) detectVisionCapabilities() {
+func (this *GGUFMetadata) detectVisionCapabilities() {
 	// Known multimodal/vision architectures
 	visionArchs := map[string]bool{
 		"llava":           true,
@@ -119,9 +119,9 @@ func (m *GGUFMetadata) detectVisionCapabilities() {
 		"gemma3":          true,
 	}
 
-	arch := m.Architecture
+	arch := this.Architecture
 	if visionArchs[arch] {
-		m.HasVision = true
+		this.HasVision = true
 		return
 	}
 
@@ -129,7 +129,7 @@ func (m *GGUFMetadata) detectVisionCapabilities() {
 	// e.g., "clip", "siglip", "clip_vision", "siglip_vision", etc.
 	archLower := strings.ToLower(arch)
 	if strings.Contains(archLower, "clip") || strings.Contains(archLower, "siglip") {
-		m.HasVision = true
+		this.HasVision = true
 		return
 	}
 
@@ -144,8 +144,8 @@ func (m *GGUFMetadata) detectVisionCapabilities() {
 	}
 
 	for _, key := range visionKeys {
-		if _, ok := m.Raw[key]; ok {
-			m.HasVision = true
+		if _, ok := this.Raw[key]; ok {
+			this.HasVision = true
 			return
 		}
 	}
@@ -157,13 +157,13 @@ func (m *GGUFMetadata) detectVisionCapabilities() {
 // - <model>-mmproj.gguf
 // - mmproj.gguf
 // - *.mmproj.gguf
-func (m *GGUFMetadata) findMMProjFile() string {
-	if m.ModelFilePath == "" {
+func (this *GGUFMetadata) findMMProjFile() string {
+	if this.ModelFilePath == "" {
 		return ""
 	}
 
-	modelDir := filepath.Dir(m.ModelFilePath)
-	modelBase := strings.TrimSuffix(filepath.Base(m.ModelFilePath), filepath.Ext(m.ModelFilePath))
+	modelDir := filepath.Dir(this.ModelFilePath)
+	modelBase := strings.TrimSuffix(filepath.Base(this.ModelFilePath), filepath.Ext(this.ModelFilePath))
 
 	// Common mmproj naming patterns
 	patterns := []string{
@@ -189,35 +189,35 @@ func (m *GGUFMetadata) findMMProjFile() string {
 
 // CanUseMMProj returns true if the model supports multimodal processing
 // and has an mmproj file available
-func (m *GGUFMetadata) CanUseMMProj() bool {
-	return m.HasVision && m.MMProjPath != ""
+func (this *GGUFMetadata) CanUseMMProj() bool {
+	return this.HasVision && this.MMProjPath != ""
 }
 
 // GetMMProjPath returns the path to the mmproj file if available
 // Returns empty string if not available
-func (m *GGUFMetadata) GetMMProjPath() string {
-	return m.MMProjPath
+func (this *GGUFMetadata) GetMMProjPath() string {
+	return this.MMProjPath
 }
 
 // GetMMProjPathAbs returns the absolute path to the mmproj file
 // If the path is relative, it's resolved relative to the model directory
-func (m *GGUFMetadata) GetMMProjPathAbs() string {
-	if m.MMProjPath == "" {
+func (this *GGUFMetadata) GetMMProjPathAbs() string {
+	if this.MMProjPath == "" {
 		return ""
 	}
-	if filepath.IsAbs(m.MMProjPath) {
-		return m.MMProjPath
+	if filepath.IsAbs(this.MMProjPath) {
+		return this.MMProjPath
 	}
-	if m.ModelFilePath == "" {
-		return m.MMProjPath
+	if this.ModelFilePath == "" {
+		return this.MMProjPath
 	}
-	modelDir := filepath.Dir(m.ModelFilePath)
-	return filepath.Join(modelDir, m.MMProjPath)
+	modelDir := filepath.Dir(this.ModelFilePath)
+	return filepath.Join(modelDir, this.MMProjPath)
 }
 
 // ValidateMMProj checks if the mmproj file exists and is a valid GGUF file
-func (m *GGUFMetadata) ValidateMMProj() error {
-	mmprojPath := m.GetMMProjPathAbs()
+func (this *GGUFMetadata) ValidateMMProj() error {
+	mmprojPath := this.GetMMProjPathAbs()
 	if mmprojPath == "" {
 		return fmt.Errorf("no mmproj path available")
 	}
@@ -255,11 +255,11 @@ func getStringFromMetadata(raw map[string]any, key string) (string, error) {
 	return str, nil
 }
 
-func (m *GGUFMetadata) StringifiedRawMetadata() map[string]string {
+func (this *GGUFMetadata) StringifiedRawMetadata() map[string]string {
 	result := make(map[string]string)
 
 	// Convert raw metadata to string values
-	for key, val := range m.Raw {
+	for key, val := range this.Raw {
 		if str, ok := val.(string); ok {
 			result[key] = str
 		} else {
