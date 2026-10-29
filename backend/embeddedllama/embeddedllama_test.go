@@ -66,7 +66,9 @@ func TestStartFailsForMissingModel(t *testing.T) {
 	m := &modelDefinitions.Model{
 		ModelName: "no-such-model",
 		ModelType: "gguf",
-		ModelFile: "/nonexistent/no-such-model.gguf",
+		Variants: []modelDefinitions.ModelVariant{
+			{FileName: "no-such-model.gguf", Location: "/nonexistent/no-such-model.gguf", LinkedModel: true},
+		},
 	}
 	if _, err := b.Start(m); err == nil {
 		t.Fatal("Start succeeded, want an error for a missing model file")

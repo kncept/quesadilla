@@ -43,7 +43,9 @@ func TestModelCell(t *testing.T) {
 	m := modelDefinitions.Model{
 		ModelName: "tiny-llama",
 		ModelType: "gguf",
-		ModelFile: "/models/gguf/tiny-llama/tiny-llama.gguf",
+		Variants: []modelDefinitions.ModelVariant{
+			{FileName: "tiny-llama.gguf"},
+		},
 	}
 
 	cases := []struct {

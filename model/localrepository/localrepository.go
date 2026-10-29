@@ -238,7 +238,14 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 		// Extract embedded metadata from GGUF files
 		if scannedModel.ModelType == string(definitions.ModelTypeGGUF) {
 			variantPath := path.Join(modelDir, variant.FileName)
-			variant.EmbeddedMetadata = extractEmbeddedMetadata(variantPath)
+
+			ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
+			if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
+				return nil
+			}
+			variant.EmbeddedMetadata = ggufMeta.StringifiedMetadata()
+			variant.SupportsVision = ggufMeta.HasVision
+
 		}
 		upsertVariant(&qm, variant)
 	}
@@ -319,7 +326,13 @@ func (this *LocalRepository) UpdateModelMetadata(scannedModel *definitions.Remot
 	if scannedModel.ModelType == string(definitions.ModelTypeGGUF) {
 		for i := range qm.Variants {
 			variantPath := path.Join(modelDir, qm.Variants[i].FileName)
-			qm.Variants[i].EmbeddedMetadata = extractEmbeddedMetadata(variantPath)
+			ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
+			if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
+				return nil
+			}
+			qm.Variants[i].EmbeddedMetadata = ggufMeta.StringifiedMetadata()
+			qm.Variants[i].SupportsVision = ggufMeta.HasVision
+
 		}
 	}
 
@@ -366,24 +379,6 @@ func upsertVariant(qm *definitions.QModel, v definitions.ModelVariant) {
 		}
 	}
 	qm.Variants = append(qm.Variants, v)
-}
-
-// extractEmbeddedMetadata reads the GGUF metadata from a variant file and
-// converts the raw metadata (map[string]any) to map[string]string for storage.
-// Returns nil if the file is not a GGUF file or metadata cannot be read.
-func extractEmbeddedMetadata(variantPath string) map[string]string {
-	ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
-	if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
-		return nil
-	}
-
-	result := make(map[string]string, len(ggufMeta.Raw))
-	for k, v := range ggufMeta.Raw {
-		if v != nil {
-			result[k] = fmt.Sprintf("%v", v)
-		}
-	}
-	return result
 }
 
 // tempFileName returns a single file name for the temporary download of a
@@ -617,7 +612,6 @@ func loadModelDirectory(components []string, dir string, ext string) ([]definiti
 	if qm.LicenceFile != "" {
 		model.LicenceFile = path.Join(dir, qm.LicenceFile)
 	}
-	model.ModelFile = model.VariantPath(qm.Variants[0])
 	return []definitions.Model{model}, nil
 }
 
@@ -692,7 +686,12 @@ func loadOrMigrateQModel(dir, family, name string, ext string) (definitions.QMod
 			// Extract embedded metadata for GGUF files
 			if ext == ".gguf" {
 				variantPath := path.Join(dir, entry.Name())
-				variant.EmbeddedMetadata = extractEmbeddedMetadata(variantPath)
+				ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
+				if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
+					return qm, false
+				}
+				variant.EmbeddedMetadata = ggufMeta.StringifiedMetadata()
+				variant.SupportsVision = ggufMeta.HasVision
 			}
 			qm.Variants = append(qm.Variants, variant)
 		}
@@ -734,7 +733,12 @@ func reconcileVariants(qm *definitions.QModel, dir string, ext string) {
 			// Extract embedded metadata for GGUF files
 			if ext == ".gguf" {
 				variantPath := path.Join(dir, entry.Name())
-				variant.EmbeddedMetadata = extractEmbeddedMetadata(variantPath)
+				ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
+				if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
+					return
+				}
+				variant.EmbeddedMetadata = ggufMeta.StringifiedMetadata()
+				variant.SupportsVision = ggufMeta.HasVision
 			}
 			qm.Variants = append(qm.Variants, variant)
 		}

@@ -30,7 +30,9 @@ func TestEmbeddedLlamaIntegration(t *testing.T) {
 	m := &modelDefinitions.Model{
 		ModelName: "integration",
 		ModelType: "gguf",
-		ModelFile: modelFile,
+		Variants: []modelDefinitions.ModelVariant{
+			{FileName: "integration.gguf", Location: modelFile, LinkedModel: true},
+		},
 	}
 	running, err := startEmbeddedLlamaServer(m)
 	if err != nil {

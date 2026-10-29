@@ -622,8 +622,8 @@ func TestModelSearchDownloadFromURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantFile := path.Join(home, ".quesadilla", "models", "gguf", "org", "a", "a.gguf")
-	if m.ModelFile != wantFile {
-		t.Errorf("ModelFile = %q, want %q", m.ModelFile, wantFile)
+	if m.GetDefaultVariantPath() != wantFile {
+		t.Errorf("GetDefaultVariantPath() = %q, want %q", m.GetDefaultVariantPath(), wantFile)
 	}
 	data, err := os.ReadFile(wantFile)
 	if err != nil {

@@ -51,17 +51,20 @@ func startEmbeddedLlamaServer(m *modelDefinitions.Model) (runnerDefinitions.Runn
 	// viewer.
 	logger := log.New(io.MultiWriter(logs.Writer(), os.Stdout), providerId+": ", 0)
 	logger.Printf("starting %s (runtime %s)", m.FullModelName(), builtInVersion)
-	logger.Printf("loading model %s", m.ModelFile)
+
+	defaultVariant := m.GetDefaultVariant()
+	variantPath := m.VariantPath(defaultVariant)
+	logger.Printf("loading model %s", variantPath)
 
 	// llama-go offloads every layer to the GPU when one is available and
 	// falls back to the CPU when it is not, so -1 is safe on every host.
-	model, err := llama.LoadModel(m.ModelFile,
+	model, err := llama.LoadModel(variantPath,
 		llama.WithGPULayers(-1),
 		llama.WithProgressCallback(progressLogger(logger)),
 	)
 	if err != nil {
 		logger.Printf("error: failed to load model: %v", err)
-		return nil, fmt.Errorf("%s: loading model %s: %w", providerId, m.ModelFile, err)
+		return nil, fmt.Errorf("%s: loading model %s: %w", providerId, variantPath, err)
 	}
 	logger.Printf("model loaded")
 

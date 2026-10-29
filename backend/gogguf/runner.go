@@ -14,7 +14,6 @@ import (
 	goggufEngine "github.com/magomedcoder/gogguf"
 	goggufServer "github.com/magomedcoder/gogguf/server"
 
-	"github.com/kncept/quesadilla/model/metadata"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
@@ -39,25 +38,17 @@ func startGoggufServer(m *modelDefinitions.Model) (runnerDefinitions.RunningMode
 	// log viewer.
 	logger := log.New(io.MultiWriter(logs.Writer(), os.Stdout), providerId+": ", 0)
 	logger.Printf("starting %s (runtime %s)", m.FullModelName(), builtInVersion)
-	logger.Printf("loading model %s", m.ModelFile)
 
-	// Read GGUF metadata for logging and vision detection
-	ggufMetadata, err := metadata.ReadGGUFMetadata(m.ModelFile)
-	if err != nil {
-		logger.Printf("warning: failed to read GGUF metadata: %v", err)
-	} else {
-		logger.Printf("model architecture: %s, has vision: %v", ggufMetadata.Architecture, ggufMetadata.HasVision)
-		if ggufMetadata.HasVision {
-			logger.Printf("note: vision model detected, but gogguf backend does not yet support mmproj")
-		}
-	}
+	defaultVariant := m.GetDefaultVariant()
+	variantPath := m.VariantPath(defaultVariant)
+	logger.Printf("loading model %s", variantPath)
 
 	// LoadMapped reads the weights through an mmap (zero-copy); this is the
 	// path the darwin/arm64 patch in nkrul/gogguf enables.
-	engine, err := goggufEngine.LoadMapped(m.ModelFile, goggufEngine.LoadOptions{})
+	engine, err := goggufEngine.LoadMapped(variantPath, goggufEngine.LoadOptions{})
 	if err != nil {
 		logger.Printf("error: failed to load model: %v", err)
-		return nil, fmt.Errorf("%s: loading model %s: %w", providerId, m.ModelFile, err)
+		return nil, fmt.Errorf("%s: loading model %s: %w", providerId, variantPath, err)
 	}
 	logger.Printf("model loaded")
 
@@ -79,7 +70,7 @@ func startGoggufServer(m *modelDefinitions.Model) (runnerDefinitions.RunningMode
 		engine:         engine,
 		server: &http.Server{
 			Addr:              fmt.Sprintf("localhost:%d", servePort),
-			Handler:           requestLogger(logger, goggufServer.New(engine, m.ModelFile).Handler()),
+			Handler:           requestLogger(logger, goggufServer.New(engine, variantPath).Handler()),
 			ReadHeaderTimeout: 10 * time.Second,
 			ErrorLog:          logger,
 		},

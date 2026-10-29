@@ -63,13 +63,15 @@ func TestStartFailsForMissingModel(t *testing.T) {
 	m := &modelDefinitions.Model{
 		ModelName: "no-such-model",
 		ModelType: string(modelDefinitions.ModelTypeONNX),
-		ModelFile: "/nonexistent/no-such-model.onnx",
+		Variants: []modelDefinitions.ModelVariant{
+			{FileName: "no-such-model.onnx", Location: "/nonexistent/no-such-model.onnx", LinkedModel: true},
+		},
 	}
 	_, err := b.Start(m)
 	if err == nil {
 		t.Fatal("Start succeeded, want an error for a missing model file")
 	}
-	if !strings.Contains(err.Error(), m.ModelFile) {
+	if !strings.Contains(err.Error(), "/nonexistent/no-such-model.onnx") {
 		t.Errorf("Start error %q does not mention the model file", err)
 	}
 }
@@ -77,17 +79,23 @@ func TestStartFailsForMissingModel(t *testing.T) {
 // fixtureModel returns the test model (a two-input Add, inputs x and y of
 // shape [3,4,5], one output "sum").
 func fixtureModel() *modelDefinitions.Model {
+	// Get the absolute path to the testdata directory
+	testDataDir, _ := filepath.Abs("testdata")
 	return &modelDefinitions.Model{
-		ModelName: "add-model",
-		ModelType: string(modelDefinitions.ModelTypeONNX),
-		ModelFile: filepath.Join("testdata", "add_model.onnx"),
+		ModelName:     "add-model",
+		ModelType:     string(modelDefinitions.ModelTypeONNX),
+		ModelDirectory: testDataDir,
+		Variants: []modelDefinitions.ModelVariant{
+			{FileName: "add_model.onnx", Location: filepath.Join(testDataDir, "add_model.onnx")},
+		},
 	}
 }
 
 // TestLoadAndRunFixture verifies the onnx-go pipeline end to end: the model
 // decodes, the inputs can be set, and a run produces the summed output.
 func TestLoadAndRunFixture(t *testing.T) {
-	model, graph, err := loadOnnxModel(fixtureModel().ModelFile)
+	fm := fixtureModel()
+	model, graph, err := loadOnnxModel(fm.GetDefaultVariantPath())
 	if err != nil {
 		t.Fatalf("loadOnnxModel: %v", err)
 	}
@@ -143,13 +151,14 @@ func TestLoadAndRunFixture(t *testing.T) {
 // on the given listener (so tests can use an ephemeral port).
 func newTestRunningModel(t *testing.T, listener net.Listener) *onnxRunningModel {
 	t.Helper()
-	model, graph, err := loadOnnxModel(fixtureModel().ModelFile)
+	fm := fixtureModel()
+	model, graph, err := loadOnnxModel(fm.GetDefaultVariantPath())
 	if err != nil {
 		t.Fatalf("loadOnnxModel: %v", err)
 	}
 	logs := runnerDefinitions.NewLogBuffer(runnerDefinitions.DefaultMaxLogLines)
 	return &onnxRunningModel{
-		modelName:      fixtureModel().FullModelName(),
+		modelName:      fm.FullModelName(),
 		runtimeVersion: builtInVersion,
 		startedAt:      time.Now(),
 		logs:           logs,

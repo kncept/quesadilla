@@ -73,8 +73,8 @@ func TestDownloadModelFromURL(t *testing.T) {
 	}
 	wantDir := path.Join(home, ".quesadilla", "models", "gguf", "org", "a")
 	wantFile := path.Join(wantDir, "a.gguf")
-	if m.ModelFile != wantFile {
-		t.Errorf("ModelFile = %q, want %q", m.ModelFile, wantFile)
+	if m.GetDefaultVariantPath() != wantFile {
+		t.Errorf("GetDefaultVariantPath() = %q, want %q", m.GetDefaultVariantPath(), wantFile)
 	}
 	data, err := os.ReadFile(wantFile)
 	if err != nil {
@@ -194,7 +194,8 @@ func TestDownloadModelRedownload(t *testing.T) {
 	if m == nil {
 		t.Fatal("expected the model to be listed after the re-download")
 	}
-	data, err := os.ReadFile(m.ModelFile)
+	defaultVariantPath := m.GetDefaultVariantPath()
+	data, err := os.ReadFile(defaultVariantPath)
 	if err != nil {
 		t.Fatalf("reading the re-downloaded file: %v", err)
 	}
@@ -202,7 +203,7 @@ func TestDownloadModelRedownload(t *testing.T) {
 		t.Errorf("file contents = %q, want new-bytes", data)
 	}
 
-	entries, err := os.ReadDir(path.Dir(m.ModelFile))
+	entries, err := os.ReadDir(path.Dir(defaultVariantPath))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +254,8 @@ func TestDownloadModelFromLocalPath(t *testing.T) {
 	if m == nil {
 		t.Fatal("expected the copied model to be listed")
 	}
-	data, err := os.ReadFile(m.ModelFile)
+	defaultVariantPath := m.GetDefaultVariantPath()
+	data, err := os.ReadFile(defaultVariantPath)
 	if err != nil {
 		t.Fatalf("reading the copied file: %v", err)
 	}
@@ -487,8 +489,8 @@ func TestLinkScannedModel(t *testing.T) {
 	if m == nil {
 		t.Fatal("expected the linked model to be listed")
 	}
-	if m.ModelFile != srcFile {
-		t.Errorf("ModelFile = %q, want the source file %q", m.ModelFile, srcFile)
+	if m.GetDefaultVariantPath() != srcFile {
+		t.Errorf("GetDefaultVariantPath() = %q, want the source file %q", m.GetDefaultVariantPath(), srcFile)
 	}
 	if len(m.Variants) != 1 || !m.Variants[0].LinkedModel {
 		t.Errorf("expected a single linked variant, got %+v", m.Variants)
@@ -591,8 +593,8 @@ func TestScanMigratesLegacyModelJson(t *testing.T) {
 	if m == nil {
 		t.Fatal("expected the migrated model to be listed")
 	}
-	if m.ModelFile != srcFile {
-		t.Errorf("ModelFile = %q, want the source file %q", m.ModelFile, srcFile)
+	if m.GetDefaultVariantPath() != srcFile {
+		t.Errorf("GetDefaultVariantPath() = %q, want the source file %q", m.GetDefaultVariantPath(), srcFile)
 	}
 	if len(m.Variants) != 1 || !m.Variants[0].LinkedModel {
 		t.Errorf("expected a single linked variant, got %+v", m.Variants)

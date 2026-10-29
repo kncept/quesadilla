@@ -6,7 +6,6 @@ import (
 	"path"
 
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
-	"github.com/kncept/quesadilla/model/metadata"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 	"github.com/kncept/quesadilla/utils/qenv"
 )
@@ -28,33 +27,22 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	// independent writers, so their partial lines don't interleave).
 	logs := runnerDefinitions.NewLogBuffer(runnerDefinitions.DefaultMaxLogLines)
 
-	// Read GGUF metadata to check for vision capabilities and mmproj
-	ggufMetadata, err := metadata.ReadGGUFMetadata(m.ModelFile)
-	if err != nil {
-		// Log but don't fail - we can still try to run without metadata
-		logs.Writer().Write([]byte(fmt.Sprintf("Warning: failed to read GGUF metadata: %v\n", err)))
-	} else {
-		logs.Writer().Write([]byte(fmt.Sprintf("Model architecture: %s, Has vision: %v\n", ggufMetadata.Architecture, ggufMetadata.HasVision)))
-	}
+	modelVariant := m.GetDefaultVariant()
+	variantPath := m.VariantPath(modelVariant)
 
 	args := []string{
 		"", // why do we need this to have and blank (or llama-server)??
-		"--model", m.ModelFile,
+		"--model", variantPath,
 
 		// "--jinja", //?
 	}
 
 	// Check if we should add mmproj for multimodal support
-	if ggufMetadata != nil && ggufMetadata.CanUseMMProj() {
-		mmprojPath := ggufMetadata.GetMMProjPathAbs()
-		// Validate the mmproj file
-		if err := ggufMetadata.ValidateMMProj(); err == nil {
-			args = append(args, "--mmproj", mmprojPath)
-			logs.Writer().Write([]byte(fmt.Sprintf("Using mmproj: %s\n", mmprojPath)))
-		} else {
-			logs.Writer().Write([]byte(fmt.Sprintf("Warning: mmproj validation failed: %v\n", err)))
-		}
+	if modelVariant.SupportsVision {
+		mmprojPath := m.VariantPath(modelVariant)
+		args = append(args, "--mmproj", mmprojPath)
 	}
+	// todo: hadd a get default vision model variant to the model
 
 	args = append(args,
 		"--alias", m.ModelName,
@@ -77,10 +65,10 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	cmd.Stderr = logs.Writer()
 	fmt.Fprintf(logs.Writer(), "CMD: %+v\n", cmd)
 
-	err = cmd.Start()
+	err := cmd.Start()
 	if err != nil {
 		fmt.Printf("Error Starting: %v\n", err)
 		return nil, err
 	}
-	return runnerDefinitions.RunDetailsFromCmd(cmd, m.FullModelName(), providerId, version, logs), err
+	return runnerDefinitions.RunDetailsFromCmd(cmd, m.FullModelName(), providerId, version, logs), nil
 }

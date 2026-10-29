@@ -50,15 +50,13 @@ type ModelVariant struct {
 
 // Model is an installed local model: a family and a name (together it is
 // identified by "family/name"), a type that selects its backend, and the
-// variants (files) that can be run. ModelFile is the model's first variant,
-// resolved to a path, for the backends that take a single file.
+// variants (files) that can be run.
 type Model struct { // output to qmodel.json
 	MetadataVersion string
 	ModelFamily     string
 	ModelName       string
 	ModelType       string // implies the backend type required
 	ModelDirectory  string // the directory holding qmodel.json (and usually the variant files)
-	ModelFile       string // the file to run: the model's first variant, resolved to a path
 	Variants        []ModelVariant
 	ModelSource     string // name of the scanner that found the model
 	ModelURL        string // URL of the model's page at its source, if known
@@ -175,4 +173,23 @@ func (m Model) VariantPath(v ModelVariant) string {
 		return v.Location
 	}
 	return path.Join(m.ModelDirectory, v.FileName)
+}
+
+// GetDefaultVariant returns the first variant of the model, or a zero
+// ModelVariant if the model has no variants.
+func (m Model) GetDefaultVariant() ModelVariant {
+	if len(m.Variants) == 0 {
+		return ModelVariant{}
+	}
+	return m.Variants[0]
+}
+
+// GetDefaultVariantPath returns the resolved path of the model's default
+// variant (the first variant), or an empty string if the model has no variants.
+func (m Model) GetDefaultVariantPath() string {
+	v := m.GetDefaultVariant()
+	if v.FileName == "" {
+		return ""
+	}
+	return m.VariantPath(v)
 }
