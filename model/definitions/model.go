@@ -38,29 +38,31 @@ const QModelFileName = "qmodel.json"
 // ImportedAt and FileSize are stamped by the local repository when a variant
 // is imported; for remote (not yet installed) variants they may be zero.
 type ModelVariant struct {
-	FileName    string    `json:"FileName"`
-	Description string    `json:"Description,omitempty"`
-	ImportedAt  time.Time `json:"ImportedAt"`
-	FileSize    int64     `json:"FileSize"`
-	LinkedModel bool      `json:"LinkedModel"`
-	Location    string    `json:"Location,omitempty"`
+	FileName        string    `json:"FileName"`
+	Description     string    `json:"Description,omitempty"`
+	ImportedAt      time.Time `json:"ImportedAt"`
+	FileSize        int64     `json:"FileSize"`
+	LinkedModel     bool      `json:"LinkedModel"`
+	Location        string    `json:"Location,omitempty"`
+	SupportsVision  bool      `json:"SupportsVision,omitempty"`
 }
 
 // Model is an installed local model: a family and a name (together it is
 // identified by "family/name"), a type that selects its backend, and the
 // variants (files) that can be run. ModelFile is the model's first variant,
 // resolved to a path, for the backends that take a single file.
-type Model struct {
-	ModelFamily    string
-	ModelName      string
-	ModelType      string // implies the backend type required
-	ModelDirectory string // the directory holding qmodel.json (and usually the variant files)
-	ModelFile      string // the file to run: the model's first variant, resolved to a path
-	Variants       []ModelVariant
-	ModelSource    string // name of the scanner that found the model
-	ModelURL       string // URL of the model's page at its source, if known
-	LicenceName    string // eg "apache-2.0"
-	LicenceFile    string // path to the stored licence file, if one was stored
+type Model struct { // output to qmodel.json
+	MetadataVersion string
+	ModelFamily     string
+	ModelName       string
+	ModelType       string // implies the backend type required
+	ModelDirectory  string // the directory holding qmodel.json (and usually the variant files)
+	ModelFile       string // the file to run: the model's first variant, resolved to a path
+	Variants        []ModelVariant
+	ModelSource     string // name of the scanner that found the model
+	ModelURL        string // URL of the model's page at its source, if known
+	LicenceName     string // eg "apache-2.0"
+	LicenceFile     string // path to the stored licence file, if one was stored
 }
 
 // RemoteModel is a model a scanner found somewhere outside the local
@@ -87,14 +89,15 @@ type RemoteModel struct {
 // variants that can be run, and its licence, if any. The family and name
 // match the model's directory (<ModelFamily>/<ModelName>).
 type QModel struct {
-	ModelFamily string         `json:"ModelFamily"`
-	ModelName   string         `json:"ModelName"`
-	ModelSource string         `json:"ModelSource"`
-	ModelType   string         `json:"ModelType"`
-	ModelURL    string         `json:"ModelURL,omitempty"`
-	Variants    []ModelVariant `json:"Variants"`
-	LicenceName string         `json:"LicenceName,omitempty"`
-	LicenceFile string         `json:"LicenceFile,omitempty"`
+	MetadataVersion string         `json:"MetadataVersion"`
+	ModelFamily     string         `json:"ModelFamily"`
+	ModelName       string         `json:"ModelName"`
+	ModelSource     string         `json:"ModelSource"`
+	ModelType       string         `json:"ModelType"`
+	ModelURL        string         `json:"ModelURL,omitempty"`
+	Variants        []ModelVariant `json:"Variants"`
+	LicenceName     string         `json:"LicenceName,omitempty"`
+	LicenceFile     string         `json:"LicenceFile,omitempty"`
 }
 
 // ModelScanner finds models installed or hosted elsewhere.

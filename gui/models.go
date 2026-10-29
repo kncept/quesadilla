@@ -17,7 +17,7 @@ import (
 
 // modelColumns are the table headers shown for the model list. The first
 // column holds each model's row actions: start/stop, delete and logs.
-var modelColumns = []string{"Actions", "Name", "Type", "Status", "File"}
+var modelColumns = []string{"Actions", "Name", "Type", "Status"}
 
 // modelsPage renders the Models screen: the installed models, as a table with
 // a row per model. The table reads from the repository on refresh, so it
@@ -64,7 +64,6 @@ func (this *QGUI) newModelsTable() *widget.Table {
 	table.SetColumnWidth(1, 220) // Name
 	table.SetColumnWidth(2, 80)  // Type
 	table.SetColumnWidth(3, 90)  // Status
-	table.SetColumnWidth(4, 400) // File
 
 	this.modelsTable = table
 	return table
@@ -82,6 +81,7 @@ func modelsCellFactory() fyne.CanvasObject {
 		widget.NewButtonWithIcon("", theme.DeleteIcon(), nil),
 		widget.NewButtonWithIcon("Logs", theme.FileTextIcon(), nil),
 		widget.NewButtonWithIcon("Open", theme.ComputerIcon(), nil),
+		widget.NewButtonWithIcon("Details", theme.InfoIcon(), nil),
 	)
 }
 
@@ -104,6 +104,7 @@ func (this *QGUI) updateModelCell(m modelDefinitions.Model, id widget.TableCellI
 		if m.ModelURL != "" {
 			cell.Add(this.modelOpenButton(m))
 		}
+		cell.Add(this.modelDetailsButton(m))
 	} else {
 		label := widget.NewLabel(modelCell(m, id.Col))
 		label.Wrapping = fyne.TextWrapOff
@@ -158,6 +159,14 @@ func (this *QGUI) modelLogsButton(m modelDefinitions.Model) *widget.Button {
 func (this *QGUI) modelOpenButton(m modelDefinitions.Model) *widget.Button {
 	return widget.NewButtonWithIcon("Open", theme.ComputerIcon(), func() {
 		this.openModelCard(m.ModelURL)
+	})
+}
+
+// modelDetailsButton builds the details button for a model's table row: it
+// navigates to the Model Details screen for that model.
+func (this *QGUI) modelDetailsButton(m modelDefinitions.Model) *widget.Button {
+	return widget.NewButtonWithIcon("Details", theme.InfoIcon(), func() {
+		this.showModelDetails(m.FullModelName())
 	})
 }
 
@@ -234,8 +243,6 @@ func modelCell(m modelDefinitions.Model, col int) string {
 			return "running"
 		}
 		return "idle"
-	case 4:
-		return m.ModelFile
 	default:
 		return ""
 	}
@@ -364,4 +371,280 @@ func formatUptime(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%ds", seconds)
 	}
+}
+
+// modelDetailsPage renders the Model Details screen: a dropdown to select a
+// model, and the selected model's metadata and variant details.
+func (this *QGUI) modelDetailsPage() fyne.CanvasObject {
+	// Initialize the display container if needed
+	if this.modelDetailsDisplay == nil {
+		this.modelDetailsDisplay = container.NewVBox()
+	}
+	// This will be populated when the page is shown
+	this.modelDetailsContent = container.NewVBox()
+	this.refreshModelDetailsContent()
+	return container.NewPadded(this.modelDetailsContent)
+}
+
+// refreshModelDetailsContent rebuilds the Model Details screen content.
+func (this *QGUI) refreshModelDetailsContent() {
+	if this.modelDetailsContent == nil {
+		return
+	}
+
+	models := this.QApp.LocalModels.Models()
+	if len(models) == 0 {
+		this.modelDetailsContent.RemoveAll()
+		this.modelDetailsContent.Add(wrappedLabel("No models installed."))
+		this.modelDetailsContent.Refresh()
+		return
+	}
+
+	// Build the dropdown options
+	modelNames := make([]string, len(models))
+	for i, m := range models {
+		modelNames[i] = m.FullModelName()
+	}
+
+	// Create or reuse the dropdown
+	if this.modelDetailsSelect == nil {
+		this.modelDetailsSelect = widget.NewSelect(modelNames, func(selected string) {
+			this.showModelDetailsContent(selected)
+		})
+		this.modelDetailsSelect.PlaceHolder = "Select a model..."
+	} else {
+		this.modelDetailsSelect.Options = modelNames
+		this.modelDetailsSelect.Refresh()
+	}
+
+	// If no model is selected yet, select the first one
+	if this.modelDetailsSelected == "" && len(modelNames) > 0 {
+		this.modelDetailsSelected = modelNames[0]
+		this.modelDetailsSelect.SetSelected(this.modelDetailsSelected)
+	}
+
+	// Build the header with the dropdown
+	header := container.NewVBox(
+		headingLabel("Model Details"),
+		this.modelDetailsSelect,
+		widget.NewSeparator(),
+	)
+
+	this.modelDetailsContent.RemoveAll()
+	this.modelDetailsContent.Add(header)
+	this.modelDetailsContent.Add(this.modelDetailsDisplay)
+	this.showModelDetailsContent(this.modelDetailsSelected)
+	this.modelDetailsContent.Refresh()
+}
+
+// showModelDetailsContent displays the details for the selected model.
+func (this *QGUI) showModelDetailsContent(modelName string) {
+	this.modelDetailsSelected = modelName
+	model := this.QApp.LocalModels.GetModel(modelName)
+	if model == nil {
+		this.modelDetailsDisplay.RemoveAll()
+		this.modelDetailsDisplay.Add(wrappedLabel("Model not found: " + modelName))
+		this.modelDetailsDisplay.Refresh()
+		return
+	}
+
+	this.modelDetailsDisplay.RemoveAll()
+
+	// Model metadata section
+	metadataSection := this.buildModelMetadataSection(*model)
+	this.modelDetailsDisplay.Add(metadataSection)
+
+	// Variants section
+	if len(model.Variants) > 0 {
+		variantsSection := this.buildVariantsSection(*model)
+		this.modelDetailsDisplay.Add(widget.NewSeparator())
+		this.modelDetailsDisplay.Add(variantsSection)
+	}
+
+	this.modelDetailsDisplay.Refresh()
+}
+
+// buildModelMetadataSection creates a section showing the model's metadata.
+func (this *QGUI) buildModelMetadataSection(m modelDefinitions.Model) fyne.CanvasObject {
+	items := []fyne.CanvasObject{
+		headingLabel("Model Metadata"),
+	}
+
+	fields := []struct {
+		label string
+		value string
+	}{
+		{"Full Name", m.FullModelName()},
+		{"Family", m.ModelFamily},
+		{"Name", m.ModelName},
+		{"Type", m.ModelType},
+		{"Directory", m.ModelDirectory},
+		{"Source", m.ModelSource},
+		{"URL", m.ModelURL},
+		{"Licence", m.LicenceName},
+		{"Licence File", m.LicenceFile},
+		{"Metadata Version", m.MetadataVersion},
+	}
+
+	for _, f := range fields {
+		if f.value != "" {
+			items = append(items, this.metadataRow(f.label, f.value))
+		}
+	}
+
+	return container.NewVBox(items...)
+}
+
+// buildVariantsSection creates a split view with a variant list on the left
+// and the selected variant's details on the right (similar to Model Search).
+func (this *QGUI) buildVariantsSection(m modelDefinitions.Model) fyne.CanvasObject {
+	if len(m.Variants) == 0 {
+		return container.NewVBox(
+			headingLabel("Variants (0)"),
+			wrappedLabel("No variants available."),
+		)
+	}
+
+	// Variant list on the left
+	variantNames := make([]string, len(m.Variants))
+	for i, v := range m.Variants {
+		variantNames[i] = v.FileName
+	}
+
+	// Find the longest name for the list template
+	longest := variantNames[0]
+	for _, name := range variantNames {
+		if len(name) > len(longest) {
+			longest = name
+		}
+	}
+
+	variantList := widget.NewList(
+		func() int {
+			return len(m.Variants)
+		},
+		func() fyne.CanvasObject {
+			label := widget.NewLabel(longest)
+			label.Wrapping = fyne.TextWrapOff
+			return container.NewPadded(label)
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			obj.(*fyne.Container).Objects[0].(*widget.Label).SetText(variantNames[id])
+		},
+	)
+
+	// Detail panel on the right - shows the selected variant's details
+	detailContainer := container.NewVBox()
+
+	// Function to update the detail panel
+	updateDetail := func(variantIndex int) {
+		if variantIndex < 0 || variantIndex >= len(m.Variants) {
+			return
+		}
+		v := m.Variants[variantIndex]
+		detailContainer.RemoveAll()
+
+		fields := []struct {
+			label string
+			value string
+			isBool bool
+		}{
+			{"File Name", v.FileName, false},
+			{"Description", v.Description, false},
+			{"Linked Model", fmt.Sprintf("%v", v.LinkedModel), true},
+			{"Location", v.Location, false},
+			{"File Size", formatFileSize(v.FileSize), false},
+			{"Imported At", v.ImportedAt.Format(time.RFC3339), false},
+			{"Supports Vision", fmt.Sprintf("%v", v.SupportsVision), true},
+		}
+
+		detailContainer.Add(headingLabel(fmt.Sprintf("Variant: %s", v.FileName)))
+		detailContainer.Add(widget.NewSeparator())
+
+		for _, f := range fields {
+			// For boolean fields, always show. For others, skip empty/zero.
+			if f.isBool || (f.value != "" && f.value != "0" && f.value != "0001-01-01T00:00:00Z") {
+				detailContainer.Add(this.metadataRow(f.label, f.value))
+			}
+		}
+
+		detailContainer.Refresh()
+	}
+
+	// Select the first variant by default
+	variantList.OnSelected = func(id widget.ListItemID) {
+		updateDetail(int(id))
+	}
+	if len(variantNames) > 0 {
+		updateDetail(0)
+		variantList.Select(0)
+	}
+
+	// Split view: list on left, details on right
+	left := container.NewBorder(
+		headingLabel(fmt.Sprintf("Variants (%d)", len(m.Variants))),
+		nil, nil, nil,
+		variantList,
+	)
+
+	right := container.NewPadded(
+		container.NewVScroll(detailContainer),
+	)
+
+	split := container.NewHSplit(left, right)
+	split.SetOffset(0.3) // 30% for the list, 70% for details
+
+	return split
+}
+
+// metadataRow creates a label-value row for metadata display.
+func (this *QGUI) metadataRow(label, value string) fyne.CanvasObject {
+	labelWidget := widget.NewLabelWithStyle(label+":", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	labelWidget.Wrapping = fyne.TextWrapOff
+	valueWidget := widget.NewLabel(value)
+	valueWidget.Wrapping = fyne.TextWrapWord
+	valueWidget.TextStyle = fyne.TextStyle{Monospace: true}
+	return container.NewGridWithColumns(2, labelWidget, valueWidget)
+}
+
+// formatFileSize formats a file size in bytes to a human-readable string.
+func formatFileSize(bytes int64) string {
+	if bytes <= 0 {
+		return ""
+	}
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// showModelDetails navigates to the Model Details screen for the given model.
+// It selects the Model Details tab and shows the model's details.
+func (this *QGUI) showModelDetails(modelName string) {
+	// Switch to the Model Details tab (index 2 in the sidebar)
+	this.mu.Lock()
+	win := this.mainWin
+	this.mu.Unlock()
+	if win == nil {
+		return
+	}
+
+	// The sidebar selection needs to happen on the main thread
+	fyne.Do(func() {
+		// Set the selected model so it shows up when the tab is selected
+		this.modelDetailsSelected = modelName
+		if this.modelDetailsSelect != nil {
+			this.modelDetailsSelect.SetSelected(modelName)
+		}
+		// Switch to the Model Details tab (index 2)
+		if this.sidebarList != nil {
+			this.sidebarList.Select(2)
+		}
+	})
 }

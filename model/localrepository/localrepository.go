@@ -117,12 +117,13 @@ func (this *LocalRepository) LinkScannedModel(scannedModel *definitions.RemoteMo
 	}
 
 	qm := definitions.QModel{
-		ModelFamily: modelFamilyName(scannedModel.ModelFamily),
-		ModelName:   scannedModel.ModelName,
-		ModelSource: scannedModel.ModelSource,
-		ModelType:   scannedModel.ModelType,
-		ModelURL:    scannedModel.ModelURL,
-		LicenceName: scannedModel.LicenceName,
+		MetadataVersion: "v1.0.0",
+		ModelFamily:     modelFamilyName(scannedModel.ModelFamily),
+		ModelName:       scannedModel.ModelName,
+		ModelSource:     scannedModel.ModelSource,
+		ModelType:       scannedModel.ModelType,
+		ModelURL:        scannedModel.ModelURL,
+		LicenceName:     scannedModel.LicenceName,
 	}
 	now := time.Now()
 	for _, v := range scannedModel.Variants {
@@ -499,14 +500,15 @@ func loadModelDirectory(components []string, dir string, ext string) ([]definiti
 	}
 
 	model := definitions.Model{
-		ModelFamily:    qm.ModelFamily,
-		ModelName:      qm.ModelName,
-		ModelType:      qm.ModelType,
-		ModelDirectory: dir,
-		Variants:       qm.Variants,
-		ModelSource:    qm.ModelSource,
-		ModelURL:       qm.ModelURL,
-		LicenceName:    qm.LicenceName,
+		MetadataVersion: qm.MetadataVersion,
+		ModelFamily:     qm.ModelFamily,
+		ModelName:       qm.ModelName,
+		ModelType:       qm.ModelType,
+		ModelDirectory:  dir,
+		Variants:        qm.Variants,
+		ModelSource:     qm.ModelSource,
+		ModelURL:        qm.ModelURL,
+		LicenceName:     qm.LicenceName,
 	}
 	if qm.LicenceFile != "" {
 		model.LicenceFile = path.Join(dir, qm.LicenceFile)
@@ -526,12 +528,12 @@ func loadOrMigrateQModel(dir, family, name string, ext string) (definitions.QMod
 		qm := definitions.QModel{}
 		if err := json.Unmarshal(data, &qm); err != nil {
 			log.Printf("local repository: reading %s: %v (the metadata will be rewritten)", qmPath, err)
-			return definitions.QModel{ModelFamily: family, ModelName: name}, true
+			return definitions.QModel{MetadataVersion: "v1.0.0", ModelFamily: family, ModelName: name}, true
 		}
 		return qm, false
 	}
 
-	qm := definitions.QModel{ModelFamily: family, ModelName: name}
+	qm := definitions.QModel{MetadataVersion: "v1.0.0", ModelFamily: family, ModelName: name}
 	legacyPath := path.Join(dir, legacyMetadataFileName)
 	if data, err := os.ReadFile(legacyPath); err == nil {
 		// a legacy linked model: its single file is the model.json

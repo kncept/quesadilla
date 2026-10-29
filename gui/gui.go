@@ -54,6 +54,15 @@ type QGUI struct {
 	noRunningLabel     *widget.Label
 	backendsTable      *widget.Table
 
+	// Model Details screen widgets
+	modelDetailsContent  *fyne.Container
+	modelDetailsDisplay  *fyne.Container
+	modelDetailsSelect   *widget.Select
+	modelDetailsSelected string
+
+	// Sidebar list for programmatic tab switching
+	sidebarList *widget.List
+
 	// The model-search screen's widgets and its last scan's results; the
 	// search runs in the background and updates them when it finishes. Nil
 	// until the main window is built. The filesystem scanner's configuration
@@ -220,9 +229,7 @@ func (this *QGUI) refreshTrayMenu() {
 	}
 
 	items = append(items, fyne.NewMenuItemSeparator())
-	quit := fyne.NewMenuItem("Quit", func() { this.Quit() })
-	quit.IsQuit = true
-	items = append(items, quit)
+	items = append(items, fyne.NewMenuItem("Quit", func() { this.Quit() }))
 
 	this.tray.Items = items
 	// re-triggers the tray driver to rebuild the native menu
@@ -291,10 +298,10 @@ func (this *QGUI) showMainWindow() {
 // and a content view taking up the rest of the window.
 func (this *QGUI) mainContent() *fyne.Container {
 	// Sidebar menu items - one per screen, per docs/GUI.md
-	sidebarItems := []string{"Overview", "Models", "Backends", "Model Search"}
+	sidebarItems := []string{"Overview", "Models", "Model Details", "Backends", "Model Search"}
 
 	// One content page per sidebar item; only the selected page is shown.
-	pages := container.NewStack(this.overviewPage(), this.modelsPage(), this.backendsPage(), this.modelSearchPage())
+	pages := container.NewStack(this.overviewPage(), this.modelsPage(), this.modelDetailsPage(), this.backendsPage(), this.modelSearchPage())
 
 	// The list sizes itself to its template item, so use the longest item
 	// as the template to guarantee the sidebar is wide enough for all items.
@@ -321,6 +328,9 @@ func (this *QGUI) mainContent() *fyne.Container {
 			obj.(*widget.Label).SetText(sidebarItems[id])
 		},
 	)
+
+	// Store the sidebar list for programmatic tab switching
+	this.sidebarList = sidebar
 
 	// Show the matching page when a sidebar item is selected.
 	sidebar.OnSelected = func(id widget.ListItemID) {

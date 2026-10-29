@@ -1,13 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"slices"
 	"strings"
 
 	"github.com/alecthomas/kong"
 	"github.com/kncept/quesadilla/app"
+	"github.com/kncept/quesadilla/model/definitions"
+	"github.com/kncept/quesadilla/model/metadata"
 )
 
 var CLI struct {
@@ -30,11 +34,20 @@ var CLI struct {
 		} `cmd:"" help:"List installable versions of a backend"`
 	} `cmd:"" help:"Backend Configuration."`
 	Model struct {
-		List     struct{} `cmd:""`
+		List struct {
+			Type string `flag:"type" help:"Filter by model type (gguf, onnx)"`
+		} `cmd:"" help:"List installed models, optionally filtered by type"`
 		Scanners struct{} `cmd:"" help:"list the available model scanners"`
-		Scan     struct {
+		Scan struct {
 			ScannerName string `arg:"" help:"name of the scanner to run (see 'model scanners')"`
 		} `cmd:"" help:"list the models found by a scanner"`
+		Info struct {
+			ModelName string `arg:"" help:"Model name (family/name or just name)"`
+		} `cmd:"" help:"Print model metadata from qmodel.json"`
+		GGUFInfo struct {
+			ModelName string `arg:"" help:"Model name (family/name or just name)"`
+			Variant   string `flag:"variant" help:"Specific variant file to inspect (defaults to first variant)"`
+		} `cmd:"" help:"Print GGUF metadata from the model file"`
 		Link struct {
 			LinkId string `arg:""`
 		} `cmd:""`
@@ -175,14 +188,88 @@ func main() {
 		}
 	case "model list":
 		availableModels := qApp.LocalModels.Models()
+		// Filter by type if specified
+		if CLI.Model.List.Type != "" {
+			// Validate type
+			if CLI.Model.List.Type != string(definitions.ModelTypeGGUF) && CLI.Model.List.Type != string(definitions.ModelTypeONNX) {
+				log.Fatalf("Invalid model type: %s (must be gguf or onnx)", CLI.Model.List.Type)
+			}
+			filtered := make([]definitions.Model, 0)
+			for _, model := range availableModels {
+				if model.ModelType == CLI.Model.List.Type {
+					filtered = append(filtered, model)
+				}
+			}
+			availableModels = filtered
+		}
 		if len(availableModels) == 0 {
 			fmt.Printf("No Models Available\n")
 		} else {
 			fmt.Printf("Models:\n")
 			for _, model := range availableModels {
-				fmt.Printf("%s\t(%d variant(s))\n", model.FullModelName(), len(model.Variants))
+				fmt.Printf("%s\t(%s, %d variant(s))\n", model.FullModelName(), model.ModelType, len(model.Variants))
 			}
 		}
+	case "model info <model-name>":
+		model := qApp.LocalModels.GetModel(CLI.Model.Info.ModelName)
+		if model == nil {
+			log.Fatalf("No such model: %s", CLI.Model.Info.ModelName)
+		}
+		// Read the qmodel.json directly
+		qmodelPath := model.ModelDirectory + "/qmodel.json"
+		data, err := os.ReadFile(qmodelPath)
+		if err != nil {
+			log.Fatalf("Failed to read qmodel.json: %v", err)
+		}
+		// Pretty print the JSON
+		var prettyJSON interface{}
+		if err := json.Unmarshal(data, &prettyJSON); err != nil {
+			log.Fatalf("Failed to parse qmodel.json: %v", err)
+		}
+		jsonData, err := json.MarshalIndent(prettyJSON, "", "  ")
+		if err != nil {
+			log.Fatalf("Failed to format JSON: %v", err)
+		}
+		fmt.Println(string(jsonData))
+	case "model gguf-info <model-name>":
+		model := qApp.LocalModels.GetModel(CLI.Model.GGUFInfo.ModelName)
+		if model == nil {
+			log.Fatalf("No such model: %s", CLI.Model.GGUFInfo.ModelName)
+		}
+		if model.ModelType != string(definitions.ModelTypeGGUF) {
+			log.Fatalf("Model %s is not a GGUF model (type: %s)", model.FullModelName(), model.ModelType)
+		}
+		// Determine which variant to inspect
+		variantPath := ""
+		if CLI.Model.GGUFInfo.Variant != "" {
+			// Find the specific variant
+			found := false
+			for _, v := range model.Variants {
+				if v.FileName == CLI.Model.GGUFInfo.Variant {
+					variantPath = model.VariantPath(v)
+					found = true
+					break
+				}
+			}
+			if !found {
+				log.Fatalf("Variant %s not found in model %s", CLI.Model.GGUFInfo.Variant, model.FullModelName())
+			}
+		} else {
+			// Use the first variant (ModelFile)
+			variantPath = model.ModelFile
+		}
+		if variantPath == "" {
+			log.Fatalf("No variant file found for model %s", model.FullModelName())
+		}
+		ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
+		if err != nil {
+			log.Fatalf("Failed to read GGUF metadata: %v", err)
+		}
+		jsonData, err := json.MarshalIndent(ggufMeta, "", "  ")
+		if err != nil {
+			log.Fatalf("Failed to marshal GGUF metadata: %v", err)
+		}
+		fmt.Println(string(jsonData))
 	case "model link <link-id>":
 		installedModelsByName := make(map[string]bool)
 		availableModels := qApp.LocalModels.Models()

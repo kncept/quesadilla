@@ -222,8 +222,8 @@ func TestTrayMenuNoModelsRunning(t *testing.T) {
 		t.Fatalf("unexpected menu: %v", got)
 	}
 	last := g.tray.Items[len(g.tray.Items)-1]
-	if !last.IsQuit {
-		t.Fatal("quit item should have IsQuit set")
+	if last.IsQuit {
+		t.Fatal("quit item should not have IsQuit set (callback handles quit)")
 	}
 }
 
