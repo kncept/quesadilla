@@ -178,6 +178,14 @@ func (g *goggufRunningModel) SendSigKill() {
 	})
 }
 
+// Log implements [runnerDefinitions.RunningModel]. It writes a line to the
+// model's log buffer.
+func (g *goggufRunningModel) Log(line string) {
+	if g.logs != nil {
+		g.logs.Writer().Write([]byte(line + "\n"))
+	}
+}
+
 // requestLogger wraps a handler, logging one line per request through the
 // model's logger (and so into both the log buffer and the console), so the
 // log viewer and the console show what the server is doing.

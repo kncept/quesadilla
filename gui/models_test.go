@@ -528,6 +528,13 @@ func (f *fakeRunningModel) SendSigQuit() { f.quits++ }
 // SendSigKill implements [runnerDefinitions.RunningModel].
 func (f *fakeRunningModel) SendSigKill() {}
 
+// Log implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) Log(line string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logs = append(f.logs, line)
+}
+
 var _ runnerDefinitions.RunningModel = (*fakeRunningModel)(nil)
 
 // tableCellObject renders one data cell and returns the widget it holds. It

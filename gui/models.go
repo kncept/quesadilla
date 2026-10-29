@@ -12,7 +12,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/kncept/quesadilla/backend/running"
-	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	"github.com/kncept/quesadilla/model/definitions"
+	"github.com/kncept/quesadilla/model/metadata"
 	"github.com/kncept/quesadilla/model/remoterepository"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
@@ -62,7 +63,7 @@ func (this *QGUI) newModelsTable() *widget.Table {
 		}
 	}
 
-	table.SetColumnWidth(0, 280) // Actions
+	table.SetColumnWidth(0, 420) // Actions (5 buttons: Start, Delete, Logs, Open, Details)
 	table.SetColumnWidth(1, 220) // Name
 	table.SetColumnWidth(2, 80)  // Type
 	table.SetColumnWidth(3, 90)  // Status
@@ -97,7 +98,7 @@ func runningModelCellFactory() fyne.CanvasObject {
 // updateModelCell fills one cell of the model table: a label for the data
 // columns, and the row's actions (start/stop, delete, logs, and open when the
 // model's metadata records a page) in the first column.
-func (this *QGUI) updateModelCell(m modelDefinitions.Model, id widget.TableCellID, cell *fyne.Container) {
+func (this *QGUI) updateModelCell(m definitions.Model, id widget.TableCellID, cell *fyne.Container) {
 	cell.RemoveAll()
 	if id.Col == 0 {
 		cell.Add(this.modelActionButton(m))
@@ -116,7 +117,7 @@ func (this *QGUI) updateModelCell(m modelDefinitions.Model, id widget.TableCellI
 }
 
 // modelActionButton builds the start/stop button for a model's table row.
-func (this *QGUI) modelActionButton(m modelDefinitions.Model) *widget.Button {
+func (this *QGUI) modelActionButton(m definitions.Model) *widget.Button {
 	if isRunning(m.FullModelName()) {
 		return widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
 			this.stopModel(m.FullModelName())
@@ -132,7 +133,7 @@ func (this *QGUI) modelActionButton(m modelDefinitions.Model) *widget.Button {
 // drawn in the theme's foreground color rather than the alarming error (red)
 // color a danger button would use. Tapping it asks for confirmation before the
 // model is actually removed (see confirmDeleteModel).
-func (this *QGUI) modelDeleteButton(m modelDefinitions.Model) *widget.Button {
+func (this *QGUI) modelDeleteButton(m definitions.Model) *widget.Button {
 	return widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
 		this.confirmDeleteModel(m)
 	})
@@ -142,7 +143,7 @@ func (this *QGUI) modelDeleteButton(m modelDefinitions.Model) *widget.Button {
 // same log viewer as the Overview's running-models table. The button is
 // disabled while the model is not running, because there are no captured log
 // lines to show.
-func (this *QGUI) modelLogsButton(m modelDefinitions.Model) *widget.Button {
+func (this *QGUI) modelLogsButton(m definitions.Model) *widget.Button {
 	button := widget.NewButtonWithIcon("Logs", theme.FileTextIcon(), func() {
 		if running := runningModelFor(m.FullModelName()); running != nil {
 			this.showLogs(running)
@@ -158,7 +159,7 @@ func (this *QGUI) modelLogsButton(m modelDefinitions.Model) *widget.Button {
 // the model's page at its source (eg its card on a model hub) in the system
 // browser. It is shown only for models whose metadata records a page, with
 // the same behaviour as the Open button on the Model Search screen.
-func (this *QGUI) modelOpenButton(m modelDefinitions.Model) *widget.Button {
+func (this *QGUI) modelOpenButton(m definitions.Model) *widget.Button {
 	return widget.NewButtonWithIcon("Open", theme.ComputerIcon(), func() {
 		this.openModelCard(m.ModelURL)
 	})
@@ -166,7 +167,7 @@ func (this *QGUI) modelOpenButton(m modelDefinitions.Model) *widget.Button {
 
 // modelDetailsButton builds the details button for a model's table row: it
 // navigates to the Model Details screen for that model.
-func (this *QGUI) modelDetailsButton(m modelDefinitions.Model) *widget.Button {
+func (this *QGUI) modelDetailsButton(m definitions.Model) *widget.Button {
 	return widget.NewButtonWithIcon("Details", theme.InfoIcon(), func() {
 		this.showModelDetails(m.FullModelName())
 	})
@@ -175,7 +176,7 @@ func (this *QGUI) modelDetailsButton(m modelDefinitions.Model) *widget.Button {
 // confirmDeleteModel asks the user to confirm deleting the named model before
 // anything is removed. The model is only deleted when the user accepts;
 // cancelling leaves it untouched.
-func (this *QGUI) confirmDeleteModel(m modelDefinitions.Model) {
+func (this *QGUI) confirmDeleteModel(m definitions.Model) {
 	this.mu.Lock()
 	win := this.mainWin
 	this.mu.Unlock()
@@ -217,7 +218,7 @@ func runningModelFor(modelName string) runnerDefinitions.RunningModel {
 // startModel runs the given model on the first installed backend that can
 // serve its type. The run is tracked in the process-wide registry, so the
 // pages and the tray pick it up on their next refresh.
-func (this *QGUI) startModel(m *modelDefinitions.Model) {
+func (this *QGUI) startModel(m *definitions.Model) {
 	fmt.Printf("startModel %s\n", m.FullModelName())
 	backend := this.QApp.Backends.BackendForModelType(m.ModelType)
 	if backend == nil {
@@ -235,7 +236,7 @@ func (this *QGUI) stopModel(modelName string) {
 
 // modelCell returns the display value for one data cell of the model table.
 // Column 0 holds the row actions, not a label.
-func modelCell(m modelDefinitions.Model, col int) string {
+func modelCell(m definitions.Model, col int) string {
 	switch col {
 	case 1:
 		return m.FullModelName()
@@ -614,7 +615,7 @@ func (this *QGUI) showModelDetailsView(show fyne.CanvasObject) {
 }
 
 // buildModelMetadataSection creates a section showing the model's metadata.
-func (this *QGUI) buildModelMetadataSection(m modelDefinitions.Model) fyne.CanvasObject {
+func (this *QGUI) buildModelMetadataSection(m definitions.Model) fyne.CanvasObject {
 	items := []fyne.CanvasObject{
 		headingLabel("Model Metadata"),
 	}
@@ -645,7 +646,7 @@ func (this *QGUI) buildModelMetadataSection(m modelDefinitions.Model) fyne.Canva
 }
 
 // buildModelDetailsModelView fills the "Model" view with the model's metadata.
-func (this *QGUI) buildModelDetailsModelView(m modelDefinitions.Model) {
+func (this *QGUI) buildModelDetailsModelView(m definitions.Model) {
 	this.modelDetailsModelView.RemoveAll()
 	this.modelDetailsModelView.Add(this.buildModelMetadataSection(m))
 	this.modelDetailsModelView.Refresh()
@@ -653,7 +654,7 @@ func (this *QGUI) buildModelDetailsModelView(m modelDefinitions.Model) {
 
 // buildModelDetailsVariantView fills the variant view with the metadata of the
 // model's variant at the given index.
-func (this *QGUI) buildModelDetailsVariantView(m modelDefinitions.Model, index int) {
+func (this *QGUI) buildModelDetailsVariantView(m definitions.Model, index int) {
 	this.modelDetailsVariantView.RemoveAll()
 	if index < 0 || index >= len(m.Variants) {
 		this.modelDetailsVariantView.Add(wrappedLabel("Variant not found."))
@@ -686,7 +687,99 @@ func (this *QGUI) buildModelDetailsVariantView(m modelDefinitions.Model, index i
 			this.modelDetailsVariantView.Add(this.metadataRow(f.label, f.value))
 		}
 	}
+
+	// For GGUF models, read and display the raw GGUF metadata
+	if m.ModelType == string(definitions.ModelTypeGGUF) {
+		this.addRawGGUFMetadata(m, v)
+	}
+
 	this.modelDetailsVariantView.Refresh()
+}
+
+// addRawGGUFMetadata reads the GGUF file's raw metadata and adds it to the variant view.
+func (this *QGUI) addRawGGUFMetadata(m definitions.Model, v definitions.ModelVariant) {
+	variantPath := m.VariantPath(v)
+	if variantPath == "" {
+		return
+	}
+
+	ggufMetadata, err := metadata.ReadGGUFMetadata(variantPath)
+	if err != nil {
+		// Silently skip if we can't read the metadata
+		return
+	}
+
+	if ggufMetadata == nil || ggufMetadata.Raw == nil || len(ggufMetadata.Raw) == 0 {
+		return
+	}
+
+	this.modelDetailsVariantView.Add(widget.NewSeparator())
+	this.modelDetailsVariantView.Add(headingLabel("Raw GGUF Metadata"))
+
+	// Format the raw metadata as a string for display
+	rawText := formatRawMetadata(ggufMetadata.Raw)
+
+	// Create a scrollable text area for the raw metadata
+	textWidget := widget.NewMultiLineEntry()
+	textWidget.SetText(rawText)
+	textWidget.Disable() // Make it read-only
+	textWidget.Wrapping = fyne.TextWrapOff
+	textWidget.TextStyle = fyne.TextStyle{Monospace: true}
+
+	// Wrap in a scroll container with a fixed height
+	scroll := container.NewVScroll(textWidget)
+	scroll.SetMinSize(fyne.NewSize(0, 300))
+
+	this.modelDetailsVariantView.Add(scroll)
+}
+
+// formatRawMetadata formats the raw metadata map as a readable string.
+func formatRawMetadata(raw map[string]any) string {
+	if raw == nil || len(raw) == 0 {
+		return "(empty)"
+	}
+
+	var keys []string
+	for k := range raw {
+		keys = append(keys, k)
+	}
+
+	// Sort keys for consistent output
+	// Simple bubble sort since we don't want to import sort just for this
+	for i := 0; i < len(keys); i++ {
+		for j := i + 1; j < len(keys); j++ {
+			if keys[i] > keys[j] {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+	}
+
+	var lines []string
+	for _, k := range keys {
+		v := raw[k]
+		lines = append(lines, fmt.Sprintf("%s: %v", k, formatMetadataValue(v)))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// formatMetadataValue formats a metadata value for display.
+func formatMetadataValue(v any) string {
+	if v == nil {
+		return "<nil>"
+	}
+	switch val := v.(type) {
+	case string:
+		return fmt.Sprintf("%q", val)
+	case []byte:
+		return fmt.Sprintf("<binary: %d bytes>", len(val))
+	case map[string]any:
+		return fmt.Sprintf("{... %d keys ...}", len(val))
+	case []any:
+		return fmt.Sprintf("[... %d items ...]", len(val))
+	default:
+		return fmt.Sprintf("%v", val)
+	}
 }
 
 // importedAtText formats an import time for display, or returns "" when the
@@ -718,7 +811,7 @@ func (this *QGUI) buildModelDetailsDownloadView() {
 
 	// Snapshot the variants and model so the table's length and cells always
 	// agree, even if the shared fields change while it is rendered.
-	variants := append([]modelDefinitions.ModelVariant(nil), this.modelDetailsRemoteVariants...)
+	variants := append([]definitions.ModelVariant(nil), this.modelDetailsRemoteVariants...)
 	modelName := this.modelDetailsSelected
 
 	table := widget.NewTable(
@@ -757,7 +850,7 @@ func (this *QGUI) buildModelDetailsDownloadView() {
 // updateModelDetailsDownloadCell fills one cell of the downloadable-variants
 // table: the file name and size, and a download button for variants that are
 // not installed yet (installed variants have no button).
-func (this *QGUI) updateModelDetailsDownloadCell(variants []modelDefinitions.ModelVariant, modelName string, id widget.TableCellID, cell *fyne.Container) {
+func (this *QGUI) updateModelDetailsDownloadCell(variants []definitions.ModelVariant, modelName string, id widget.TableCellID, cell *fyne.Container) {
 	cell.RemoveAll()
 	if id.Row < 0 || id.Row >= len(variants) {
 		cell.Refresh()
@@ -800,13 +893,13 @@ func (this *QGUI) modelDetailsVariantInstalled(modelName string, fileName string
 
 // isHuggingFaceModel reports whether the model came from HuggingFace, whose
 // files can be fetched individually.
-func isHuggingFaceModel(m modelDefinitions.Model) bool {
+func isHuggingFaceModel(m definitions.Model) bool {
 	return m.ModelSource == remoterepository.HuggingFaceScannerName
 }
 
 // huggingFaceModelID returns the Hub id ("org/name") of a model, taken from its
 // source URL when present, or from its full model name otherwise.
-func huggingFaceModelID(m modelDefinitions.Model) string {
+func huggingFaceModelID(m definitions.Model) string {
 	u := strings.TrimSpace(m.ModelURL)
 	for _, prefix := range []string{
 		"https://huggingface.co/",
@@ -840,11 +933,11 @@ func (this *QGUI) loadModelDetailsRemoteVariants() {
 
 // fetchModelDetailsRemoteVariants fetches the downloadable variants of a
 // HuggingFace model in the background and then rebuilds the download view.
-func (this *QGUI) fetchModelDetailsRemoteVariants(m modelDefinitions.Model) {
+func (this *QGUI) fetchModelDetailsRemoteVariants(m definitions.Model) {
 	modelName := m.FullModelName()
 	modelID := huggingFaceModelID(m)
 	go func() {
-		var variants []modelDefinitions.ModelVariant
+		var variants []definitions.ModelVariant
 		scanner := this.QApp.RemoteModels.GetScanner(remoterepository.HuggingFaceScannerName)
 		if hfScanner, ok := scanner.(*remoterepository.HuggingFaceScanner); ok {
 			if remote := hfScanner.GetModel(modelID); remote != nil {

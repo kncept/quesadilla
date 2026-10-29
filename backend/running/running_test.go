@@ -38,6 +38,9 @@ func (f *fakeRunningModel) SendSigQuit() {}
 // SendSigKill implements [runnerDefinitions.RunningModel].
 func (f *fakeRunningModel) SendSigKill() {}
 
+// Log implements [runnerDefinitions.RunningModel].
+func (f *fakeRunningModel) Log(line string) {}
+
 var _ runnerDefinitions.RunningModel = (*fakeRunningModel)(nil)
 
 func TestTrackAndStop(t *testing.T) {

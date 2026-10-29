@@ -227,6 +227,14 @@ func (g *embeddedRunningModel) SendSigKill() {
 	})
 }
 
+// Log implements [runnerDefinitions.RunningModel]. It writes a line to the
+// model's log buffer.
+func (g *embeddedRunningModel) Log(line string) {
+	if g.logs != nil {
+		g.logs.Writer().Write([]byte(line + "\n"))
+	}
+}
+
 // chatCompletionRequest is the body of a POST /v1/chat/completions request, in
 // OpenAI's shape (the subset the backend honours).
 type chatCompletionRequest struct {

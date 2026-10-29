@@ -11,7 +11,9 @@ type RunningModel interface {
 	ProviderName() string
 	RuntimeVersion() string
 	Uptime() time.Duration
-	Logs() []string // recent captured log lines, oldest first
+
+	Log(line string) // externally push a line to the logs
+	Logs() []string  // recent captured log lines, oldest first
 
 	Wait()        // wait for this to end
 	SendSigQuit() // please quit
@@ -81,5 +83,11 @@ func (c *cmdRunningModel) SendSigKill() {
 // SendSigQuit implements [RunningModel].
 func (c *cmdRunningModel) SendSigQuit() {
 	c.cmd.Process.Signal(syscall.SIGQUIT)
+}
 
+// Log implements [RunningModel]. It writes a line to the model's log buffer.
+func (c *cmdRunningModel) Log(line string) {
+	if c.logs != nil {
+		c.logs.Writer().Write([]byte(line + "\n"))
+	}
 }

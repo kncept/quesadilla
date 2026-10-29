@@ -86,6 +86,7 @@ func (this *QApp) Start(backend backendDefinitions.Backend, model *modelDefiniti
 		// now the goroutine waits, to make sure that 'on finish' events
 		// (stopTracking and wait groups) trigger correctly
 		runningModel.Wait()
+		runningModel.Log("Model stopped")
 	}()
 	waitForStart.Wait()
 	return singleAwaitGroup

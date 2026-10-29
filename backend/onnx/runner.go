@@ -184,6 +184,14 @@ func (g *onnxRunningModel) SendSigKill() {
 	})
 }
 
+// Log implements [runnerDefinitions.RunningModel]. It writes a line to the
+// model's log buffer.
+func (g *onnxRunningModel) Log(line string) {
+	if g.logs != nil {
+		g.logs.Writer().Write([]byte(line + "\n"))
+	}
+}
+
 // inferenceRequest is the body of a POST /inference request: one entry per
 // model input, in the model's input order. Each entry carries a flat list of
 // float values; when its shape is omitted, the shape the model declared for
