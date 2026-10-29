@@ -4,7 +4,7 @@
       "dockerFile": "ubuntu.Dockerfile",
       "build": { 
         "args": { 
-          "OPENJDK_VERSION": "17"
+          "GO_VERSION": "1.27.3"
         } 
       },
 
