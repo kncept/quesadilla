@@ -1,0 +1,36 @@
+{
+    // see https://containers.dev/implementors/json_reference/
+    // also https://github.com/microsoft/vscode-remote-try-go/blob/main/.devcontainer/devcontainer.json
+      "dockerFile": "ubuntu.Dockerfile",
+      "build": { 
+        "args": { 
+          "OPENJDK_VERSION": "17"
+        } 
+      },
+
+      // https://stackoverflow.com/questions/70206554/share-ssh-keys-with-vs-code-devcontainer-running-with-dockers-wsl2-backend
+      "mounts": [
+        // uncomment for ssh access INSIDE the dev container.
+        // "type=bind,source=${localEnv:USERPROFILE}${localEnv:HOME}/.ssh,target=/ubuntu/.ssh,readonly"
+        "type=bind,source=${localWorkspaceFolder},target=/workspaces",
+      ],
+
+      // "containerUser": "${localEnv:USER}",
+      // "remoteUser": "${localEnv:USER}",
+      "updateRemoteUserUID": true,
+
+      "forwardPorts": [
+        // "8080:8080" // wasmserve - will auto forward and prompt
+      ],
+
+      "customizations": {
+        // Configure properties specific to VS Code.
+        "vscode": {
+          // Add the IDs of extensions you want installed when the container is created.
+          "extensions": [
+			"streetsidesoftware.code-spell-checker",
+			"vscjava.vscode-gradle"
+		]
+        }
+      }
+    }
