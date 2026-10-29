@@ -120,9 +120,13 @@ Results carry action buttons in the action column:
 
 ## Downloads Page
 Lists every download and download job currently in progress, with its name,
-source, destination and elapsed time. Downloads start in the background and
-leave the list once they finish, whether they succeeded or failed; the screen
-refreshes automatically while it is open.
+source, destination, progress percentage, and elapsed time. Downloads start in
+the background and leave the list once they finish, whether they succeeded or
+failed; the screen refreshes automatically while it is open.
+
+The progress column shows a percentage (0–100) when the server sends a
+`Content-Length` header, and `—` when the total size is unknown (no
+`Content-Length`).
 
 Downloads started from the Model Search and Model Details screens are listed
 here too: a model download job stays listed until all of its files have been

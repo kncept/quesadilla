@@ -136,7 +136,7 @@ func (this *LocalRepository) LinkScannedModel(scannedModel *definitions.RemoteMo
 		}
 		qm.Variants = append(qm.Variants, v)
 	}
-	if err := fetchLicence(&qm, scannedModel.LicenceFile, modelDir); err != nil {
+	if err := fetchLicence(&qm, scannedModel.LicenceFile, modelDir, nil); err != nil {
 		// a failed licence fetch does not fail the link
 		log.Printf("local repository: fetching the licence for %s: %v", scannedModel.FullModelName(), err)
 	}
@@ -156,18 +156,18 @@ func (this *LocalRepository) LinkScannedModel(scannedModel *definitions.RemoteMo
 // re-download). The model's licence file is fetched too, when the scanner
 // knows of one. The repository rescans afterwards, so the model shows up in
 // [Models].
-func (this *LocalRepository) DownloadModel(scannedModel *definitions.RemoteModel) error {
-	return this.installVariants(scannedModel, nil)
+func (this *LocalRepository) DownloadModel(scannedModel *definitions.RemoteModel, progress func(current, total int64)) error {
+	return this.installVariants(scannedModel, nil, progress)
 }
 
 // DownloadVariant installs one of a scanned model's variants (matched by file
 // name), merging it with the model's existing local variants when the model
 // is already installed. This is how a partially downloaded model grows: each
 // additional variant lands in the same model directory.
-func (this *LocalRepository) DownloadVariant(scannedModel *definitions.RemoteModel, fileName string) error {
+func (this *LocalRepository) DownloadVariant(scannedModel *definitions.RemoteModel, fileName string, progress func(current, total int64)) error {
 	for i := range scannedModel.Variants {
 		if scannedModel.Variants[i].FileName == fileName {
-			return this.installVariants(scannedModel, &scannedModel.Variants[i])
+			return this.installVariants(scannedModel, &scannedModel.Variants[i], progress)
 		}
 	}
 	return fmt.Errorf("model %s has no variant named %s", scannedModel.FullModelName(), fileName)
@@ -177,7 +177,7 @@ func (this *LocalRepository) DownloadVariant(scannedModel *definitions.RemoteMod
 // only is nil, all of them) into the model's directory, merging with the
 // variants already stored there, then (re)writes the model's qmodel.json and
 // rescans.
-func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteModel, only *definitions.ModelVariant) error {
+func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteModel, only *definitions.ModelVariant, progress func(current, total int64)) error {
 	if _, ok := typeFileExtensions[scannedModel.ModelType]; !ok {
 		return fmt.Errorf("Unknown model type: %s", scannedModel.ModelType)
 	}
@@ -216,7 +216,7 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 		tempFile := path.Join(modelsDir, tempFileName(scannedModel.FullModelName(), variant.FileName))
 		defer os.Remove(tempFile)
 		if isURL(variant.Location) {
-			if err := qhttp.DownloadFile(variant.Location, modelsDir, path.Base(tempFile)); err != nil {
+			if err := qhttp.DownloadFileWithProgress(variant.Location, modelsDir, path.Base(tempFile), progress); err != nil {
 				return err
 			}
 		} else {
@@ -237,7 +237,7 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 		upsertVariant(&qm, variant)
 	}
 
-	if err := fetchLicence(&qm, scannedModel.LicenceFile, modelDir); err != nil {
+	if err := fetchLicence(&qm, scannedModel.LicenceFile, modelDir, progress); err != nil {
 		// a failed licence fetch does not fail the install
 		log.Printf("local repository: fetching the licence for %s: %v", scannedModel.FullModelName(), err)
 	}
@@ -252,13 +252,13 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 // fetchLicence fetches the model's licence file (from a URL or a local path)
 // into the model directory, when it is not stored there already. The file is
 // stored under its base name, recorded in the metadata.
-func fetchLicence(qm *definitions.QModel, licenceLocation string, modelDir string) error {
+func fetchLicence(qm *definitions.QModel, licenceLocation string, modelDir string, progress func(current, total int64)) error {
 	if licenceLocation == "" || qm.LicenceFile != "" {
 		return nil
 	}
 	licenceName := path.Base(licenceLocation)
 	if isURL(licenceLocation) {
-		if err := qhttp.DownloadFile(licenceLocation, modelDir, licenceName); err != nil {
+		if err := qhttp.DownloadFileWithProgress(licenceLocation, modelDir, licenceName, progress); err != nil {
 			return err
 		}
 	} else {

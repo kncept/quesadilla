@@ -62,7 +62,7 @@ func TestDownloadModelFromURL(t *testing.T) {
 		Variants: []definitions.ModelVariant{
 			{FileName: "a.gguf", Location: server.URL + "/a.gguf"},
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("DownloadModel: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestDownloadModelMultipleVariants(t *testing.T) {
 			{FileName: "a-q4.gguf", Location: server.URL + "/q4"},
 			{FileName: "a-q8.gguf", Location: server.URL + "/q8"},
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("DownloadModel: %v", err)
 	}
@@ -183,10 +183,10 @@ func TestDownloadModelRedownload(t *testing.T) {
 			{FileName: "a.gguf", Location: server.URL + "/a.gguf"},
 		},
 	}
-	if err := repo.DownloadModel(remote); err != nil {
+	if err := repo.DownloadModel(remote, nil); err != nil {
 		t.Fatalf("first download: %v", err)
 	}
-	if err := repo.DownloadModel(remote); err != nil {
+	if err := repo.DownloadModel(remote, nil); err != nil {
 		t.Fatalf("re-download: %v", err)
 	}
 
@@ -244,7 +244,7 @@ func TestDownloadModelFromLocalPath(t *testing.T) {
 		Variants: []definitions.ModelVariant{
 			{FileName: "local.gguf", Location: srcFile},
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("DownloadModel: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestDownloadModelLicence(t *testing.T) {
 		Variants:    []definitions.ModelVariant{{FileName: "a.gguf", Location: server.URL + "/a.gguf"}},
 		LicenceName: "mit",
 		LicenceFile: server.URL + "/LICENSE",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("DownloadModel: %v", err)
 	}
@@ -332,7 +332,7 @@ func TestDownloadModelModelURL(t *testing.T) {
 		Variants: []definitions.ModelVariant{
 			{FileName: "a.gguf", Location: server.URL + "/a.gguf"},
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("DownloadModel: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestDownloadModelUnknownType(t *testing.T) {
 		ModelSource: "ZTest",
 		ModelType:   "xxx",
 		Variants:    []definitions.ModelVariant{{FileName: "b.gguf", Location: "https://x.org/b.gguf"}},
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected an error for an unsupported model type")
 	}
@@ -388,7 +388,7 @@ func TestDownloadModelFailureLeavesNoModel(t *testing.T) {
 		ModelSource: "ZTest",
 		ModelType:   "gguf",
 		Variants:    []definitions.ModelVariant{{FileName: "a.gguf", Location: server.URL + "/a.gguf"}},
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected an error from the failed download")
 	}
@@ -422,7 +422,7 @@ func TestDownloadVariantMerges(t *testing.T) {
 	}
 
 	repo := NewLocalRepository()
-	if err := repo.DownloadVariant(remote, "a-q4.gguf"); err != nil {
+	if err := repo.DownloadVariant(remote, "a-q4.gguf", nil); err != nil {
 		t.Fatalf("first variant: %v", err)
 	}
 	m := repo.GetModel("org/a")
@@ -433,7 +433,7 @@ func TestDownloadVariantMerges(t *testing.T) {
 		t.Fatalf("variants after the first download = %d, want 1", got)
 	}
 
-	if err := repo.DownloadVariant(remote, "a-q8.gguf"); err != nil {
+	if err := repo.DownloadVariant(remote, "a-q8.gguf", nil); err != nil {
 		t.Fatalf("second variant: %v", err)
 	}
 	m = repo.GetModel("org/a")
@@ -450,7 +450,7 @@ func TestDownloadVariantMerges(t *testing.T) {
 			t.Errorf("variant %s not installed: %v", fileName, err)
 		}
 	}
-	if err := repo.DownloadVariant(remote, "a-q16.gguf"); err == nil {
+	if err := repo.DownloadVariant(remote, "a-q16.gguf", nil); err == nil {
 		t.Error("expected an error for a variant the model does not have")
 	}
 }
@@ -543,7 +543,7 @@ func TestRemoveModel(t *testing.T) {
 		ModelSource: "ZTest",
 		ModelType:   "gguf",
 		Variants:    []definitions.ModelVariant{{FileName: "a.gguf", Location: server.URL + "/a.gguf"}},
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("DownloadModel: %v", err)
 	}
 

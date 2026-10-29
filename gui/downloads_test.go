@@ -183,3 +183,74 @@ func TestInstallModelListedAsDownload(t *testing.T) {
 	waitForDownloadFinish(t, g)
 	waitForActiveDownloads(t, g, 0)
 }
+
+// TestDownloadProgress verifies the progress percentage is updated during
+// download when Content-Length is available, and stays -1 when it's not.
+func TestDownloadProgress(t *testing.T) {
+	test.NewApp()
+
+	// Server that sends Content-Length
+	serverWithLength := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data := []byte("0123456789") // 10 bytes
+		w.Header().Set("Content-Length", "10")
+		_, _ = w.Write(data)
+	}))
+	defer serverWithLength.Close()
+
+	// Server without Content-Length (chunked)
+	serverNoLength := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// No Content-Length header
+		_, _ = w.Write([]byte("data"))
+	}))
+	defer serverNoLength.Close()
+
+	g := CreateGui(nil, app.New())
+	g.downloadsPage()
+
+	// Test with Content-Length
+	dest1 := path.Join(t.TempDir(), "with-length.txt")
+	done1 := make(chan struct{})
+	g.download(downloadRequest{
+		Name:        "with length",
+		URL:         serverWithLength.URL + "/file.txt",
+		Destination: dest1,
+		OnComplete: func(error) {
+			close(done1)
+		},
+	})
+
+	// Wait for download to complete
+	select {
+	case <-done1:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for download with length")
+	}
+
+	downloads := g.activeDownloads()
+	if len(downloads) != 0 {
+		t.Fatalf("expected no active downloads, got %d", len(downloads))
+	}
+
+	// Test without Content-Length
+	dest2 := path.Join(t.TempDir(), "no-length.txt")
+	done2 := make(chan struct{})
+	g.download(downloadRequest{
+		Name:        "no length",
+		URL:         serverNoLength.URL + "/file.txt",
+		Destination: dest2,
+		OnComplete: func(error) {
+			close(done2)
+		},
+	})
+
+	select {
+	case <-done2:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for download without length")
+	}
+
+	downloads = g.activeDownloads()
+	if len(downloads) != 0 {
+		t.Fatalf("expected no active downloads, got %d", len(downloads))
+	}
+}

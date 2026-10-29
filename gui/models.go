@@ -879,7 +879,14 @@ func (this *QGUI) downloadHuggingFaceVariant(variantFileName string) {
 			return
 		}
 
-		err := this.QApp.LocalModels.DownloadVariant(remote, variantFileName)
+		err := this.QApp.LocalModels.DownloadVariant(remote, variantFileName, func(current, total int64) {
+			if total > 0 {
+				download.Progress = int((current * 100) / total)
+			} else {
+				download.Progress = -1
+			}
+			this.refreshDownloads()
+		})
 		fyne.Do(func() {
 			if err != nil {
 				this.notifyError(fmt.Sprintf("Download failed: %v", err))

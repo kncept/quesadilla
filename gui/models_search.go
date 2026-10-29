@@ -748,9 +748,23 @@ func (this *QGUI) installModel(m modelDefinitions.RemoteModel, variantFile strin
 			} else if action.link {
 				err = this.QApp.LocalModels.LinkScannedModel(remote)
 			} else if variantFile != "" {
-				err = this.QApp.LocalModels.DownloadVariant(remote, variantFile)
+				err = this.QApp.LocalModels.DownloadVariant(remote, variantFile, func(current, total int64) {
+					if total > 0 {
+						download.Progress = int((current * 100) / total)
+					} else {
+						download.Progress = -1
+					}
+					this.refreshDownloads()
+				})
 			} else {
-				err = this.QApp.LocalModels.DownloadModel(remote)
+				err = this.QApp.LocalModels.DownloadModel(remote, func(current, total int64) {
+					if total > 0 {
+						download.Progress = int((current * 100) / total)
+					} else {
+						download.Progress = -1
+					}
+					this.refreshDownloads()
+				})
 			}
 		}
 		fyne.Do(func() {

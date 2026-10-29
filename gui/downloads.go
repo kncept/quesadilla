@@ -32,10 +32,11 @@ type activeDownload struct {
 	Source      string
 	Destination string
 	Started     time.Time
+	Progress    int // 0-100, or -1 if unknown
 }
 
 // downloadColumns are the table headers shown on the Downloads screen.
-var downloadColumns = []string{"Name", "Source", "Destination", "Elapsed"}
+var downloadColumns = []string{"Name", "Source", "Destination", "Progress", "Elapsed"}
 
 // downloadsPage renders the Downloads screen: every download and download job
 // currently in progress. The table is refreshed by the status ticker, so
@@ -74,7 +75,8 @@ func (this *QGUI) downloadsPage() fyne.CanvasObject {
 	table.SetColumnWidth(0, 220) // Name
 	table.SetColumnWidth(1, 280) // Source
 	table.SetColumnWidth(2, 300) // Destination
-	table.SetColumnWidth(3, 90)  // Elapsed
+	table.SetColumnWidth(3, 80)  // Progress
+	table.SetColumnWidth(4, 90)  // Elapsed
 
 	empty := widget.NewLabel("No downloads in progress")
 	this.downloadsTable = table
@@ -110,6 +112,11 @@ func downloadCell(d activeDownload, col int) string {
 	case 2:
 		return d.Destination
 	case 3:
+		if d.Progress < 0 {
+			return "—"
+		}
+		return fmt.Sprintf("%d%%", d.Progress)
+	case 4:
 		return formatUptime(time.Since(d.Started))
 	default:
 		return ""
@@ -149,7 +156,14 @@ func (this *QGUI) download(request downloadRequest) {
 		if directory == "" {
 			directory = "."
 		}
-		err := qhttp.DownloadFile(request.URL, directory, fileName)
+		err := qhttp.DownloadFileWithProgress(request.URL, directory, fileName, func(current, total int64) {
+			if total > 0 {
+				download.Progress = int((current * 100) / total)
+			} else {
+				download.Progress = -1
+			}
+			this.refreshDownloads()
+		})
 		if request.OnComplete != nil {
 			request.OnComplete(err)
 		}
@@ -165,6 +179,7 @@ func (this *QGUI) addDownload(name, source, destination string) *activeDownload 
 		Source:      source,
 		Destination: destination,
 		Started:     time.Now(),
+		Progress:    -1, // unknown until we get Content-Length
 	}
 	this.downloadsMu.Lock()
 	this.downloads = append(this.downloads, download)
