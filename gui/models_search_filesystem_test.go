@@ -190,7 +190,7 @@ func TestModelSearchFilesystemImport(t *testing.T) {
 		t.Fatal("expected an Import button on the rendered row")
 	}
 	tapButtonCenter(t, importButton)
-	waitForDownloadFinish(t, g)
+	waitForJobFinish(t, g)
 
 	if got, want := g.searchStatusLabel.Text, "Imported tiny"; got != want {
 		t.Errorf("status = %q, want %q", got, want)
@@ -237,7 +237,7 @@ func TestModelSearchFilesystemLink(t *testing.T) {
 		t.Fatal("expected a Link button on the rendered row")
 	}
 	tapButtonCenter(t, linkButton)
-	waitForDownloadFinish(t, g)
+	waitForJobFinish(t, g)
 
 	if got, want := g.searchStatusLabel.Text, "Linked tiny"; got != want {
 		t.Errorf("status = %q, want %q", got, want)

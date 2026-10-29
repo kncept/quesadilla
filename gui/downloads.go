@@ -2,237 +2,164 @@ package gui
 
 import (
 	"fmt"
-	"path"
-	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
 
-	"github.com/kncept/quesadilla/utils/qhttp"
+	"github.com/kncept/quesadilla/gui/jobs"
+	"github.com/kncept/quesadilla/model/remoterepository"
 )
 
-// downloadRequest describes one download started with [QGUI.download].
-type downloadRequest struct {
-	// Name is what the download is called on the Downloads screen.
-	Name string
-	// URL is the source to download from.
-	URL string
-	// Destination is the file to write the download to.
-	Destination string
-	// OnComplete runs after the download finishes. It receives the
-	// download's error, or nil when it succeeded.
-	OnComplete func(error)
-}
-
-// activeDownload is one download (or multi-file download job) currently in
-// progress. It is what the Downloads screen lists.
-type activeDownload struct {
-	Name        string
-	Source      string
-	Destination string
-	Started     time.Time
-	Progress    int // 0-100, or -1 if unknown
-}
-
-// downloadColumns are the table headers shown on the Downloads screen.
-var downloadColumns = []string{"Name", "Source", "Destination", "Progress", "Elapsed"}
-
-// downloadsPage renders the Downloads screen: every download and download job
-// currently in progress. The table is refreshed by the status ticker, so
-// elapsed times keep counting up and finished downloads disappear.
-func (this *QGUI) downloadsPage() fyne.CanvasObject {
-	header := container.NewVBox(
-		headingLabel("Downloads"),
-		wrappedLabel("Downloads and download jobs currently in progress."),
-		widget.NewSeparator(),
-	)
-
-	table := widget.NewTable(
-		func() (int, int) {
-			return len(this.activeDownloads()), len(downloadColumns)
-		},
-		downloadsCellFactory,
-		func(id widget.TableCellID, cell fyne.CanvasObject) {
-			downloads := this.activeDownloads()
-			if id.Row < 0 || id.Row >= len(downloads) {
-				return
-			}
-			this.updateDownloadCell(downloads[id.Row], id, cell.(*fyne.Container))
-		},
-	)
-
-	table.ShowHeaderRow = true
-	table.CreateHeader = func() fyne.CanvasObject {
-		return widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+// jobsPage renders the Jobs screen using the new jobs package.
+func (this *QGUI) jobsPage() fyne.CanvasObject {
+	if this.jobsScreen == nil {
+		this.jobsScreen = jobs.NewJobsScreen(this.jobManager)
 	}
-	table.UpdateHeader = func(id widget.TableCellID, cell fyne.CanvasObject) {
-		if id.Col >= 0 && id.Col < len(downloadColumns) {
-			cell.(*widget.Label).SetText(downloadColumns[id.Col])
-		}
-	}
-
-	table.SetColumnWidth(0, 220) // Name
-	table.SetColumnWidth(1, 280) // Source
-	table.SetColumnWidth(2, 300) // Destination
-	table.SetColumnWidth(3, 80)  // Progress
-	table.SetColumnWidth(4, 90)  // Elapsed
-
-	empty := widget.NewLabel("No downloads in progress")
-	this.downloadsTable = table
-	this.noDownloadsLabel = empty
-	this.updateDownloadsVisibility()
-	return container.NewPadded(container.NewBorder(header, nil, nil, nil, container.NewStack(table, empty)))
+	return this.jobsScreen.Content()
 }
 
-// downloadsCellFactory builds a cell of the Downloads table. Like the other
-// tables it needs a real layout, so the cell is a container rather than a bare
-// &fyne.Container{}.
-func downloadsCellFactory() fyne.CanvasObject {
-	return container.NewHBox(widget.NewLabel("Download"))
-}
-
-// updateDownloadCell fills one cell of the Downloads table.
-func (this *QGUI) updateDownloadCell(d activeDownload, id widget.TableCellID, cell *fyne.Container) {
-	cell.RemoveAll()
-	label := widget.NewLabel(downloadCell(d, id.Col))
-	label.Wrapping = fyne.TextWrapOff
-	cell.Add(label)
-	cell.Refresh()
-}
-
-// downloadCell returns the display value for one column of the Downloads
-// table.
-func downloadCell(d activeDownload, col int) string {
-	switch col {
-	case 0:
-		return d.Name
-	case 1:
-		return d.Source
-	case 2:
-		return d.Destination
-	case 3:
-		if d.Progress < 0 {
-			return "—"
-		}
-		return fmt.Sprintf("%d%%", d.Progress)
-	case 4:
-		return formatUptime(time.Since(d.Started))
-	default:
-		return ""
-	}
-}
-
-// updateDownloadsVisibility shows the table while downloads are active, and
-// the placeholder otherwise.
-func (this *QGUI) updateDownloadsVisibility() {
-	hasDownloads := len(this.activeDownloads()) > 0
-	if this.downloadsTable != nil {
-		if hasDownloads {
-			this.downloadsTable.Show()
-		} else {
-			this.downloadsTable.Hide()
-		}
-	}
-	if this.noDownloadsLabel != nil {
-		if hasDownloads {
-			this.noDownloadsLabel.Hide()
-		} else {
-			this.noDownloadsLabel.Show()
-		}
-	}
-}
-
-// download starts downloading request.URL to request.Destination in the
-// background. The download is listed on the Downloads screen while it runs;
-// when it finishes its completion function is called, and the download is
-// then removed from the list.
-func (this *QGUI) download(request downloadRequest) {
-	download := this.addDownload(request.Name, request.URL, request.Destination)
-	go func() {
-		defer this.removeDownload(download)
-
-		directory, fileName := path.Split(request.Destination)
-		if directory == "" {
-			directory = "."
-		}
-		err := qhttp.DownloadFileWithProgress(request.URL, directory, fileName, func(current, total int64) {
-			if total > 0 {
-				download.Progress = int((current * 100) / total)
-			} else {
-				download.Progress = -1
-			}
-			this.refreshDownloads()
+// startJob starts a job using the job manager.
+func (this *QGUI) startJob(request jobs.JobRequest) {
+	switch request.Type {
+	case jobs.JobTypeDownload:
+		this.jobManager.StartDownloadJob(request)
+	case jobs.JobTypeRefreshModelMetadata:
+		this.jobManager.StartMetadataRefreshJob(request, func() error {
+			return this.doRefreshModelMetadata(request.ModelName)
 		})
-		if request.OnComplete != nil {
-			request.OnComplete(err)
-		}
-	}()
+	}
 }
 
-// addDownload records a new download as active and returns it, so its job can
-// remove it again once it finishes. It is also used by downloads that are
-// handled by the local repository, so every job shows on the Downloads screen.
-func (this *QGUI) addDownload(name, source, destination string) *activeDownload {
-	download := &activeDownload{
-		Name:        name,
-		Source:      source,
-		Destination: destination,
-		Started:     time.Now(),
-		Progress:    -1, // unknown until we get Content-Length
+// doRefreshModelMetadata performs the actual metadata refresh.
+func (this *QGUI) doRefreshModelMetadata(modelName string) error {
+	model := this.QApp.LocalModels.GetModel(modelName)
+	if model == nil {
+		return fmt.Errorf("model not found: %s", modelName)
 	}
-	this.downloadsMu.Lock()
-	this.downloads = append(this.downloads, download)
-	this.downloadsMu.Unlock()
-	this.refreshDownloads()
-	return download
-}
 
-// removeDownload drops a finished download from the active list. Removing an
-// unknown download is a no-op.
-func (this *QGUI) removeDownload(download *activeDownload) {
-	if download == nil {
-		return
+	// Only HuggingFace models can have their metadata refreshed from remote
+	if !isHuggingFaceModel(*model) {
+		return fmt.Errorf("metadata refresh is only available for HuggingFace models")
 	}
-	this.downloadsMu.Lock()
-	for i, active := range this.downloads {
-		if active == download {
-			this.downloads = append(this.downloads[:i], this.downloads[i+1:]...)
-			break
-		}
-	}
-	this.downloadsMu.Unlock()
-	this.refreshDownloads()
-}
 
-// activeDownloads returns a snapshot of the downloads currently in progress.
-func (this *QGUI) activeDownloads() []activeDownload {
-	this.downloadsMu.Lock()
-	defer this.downloadsMu.Unlock()
-	downloads := make([]activeDownload, len(this.downloads))
-	for i, download := range this.downloads {
-		downloads[i] = *download
+	modelID := huggingFaceModelID(*model)
+	scanner := this.QApp.RemoteModels.GetScanner("HuggingFace")
+	hfScanner, ok := scanner.(*remoterepository.HuggingFaceScanner)
+	if !ok {
+		return fmt.Errorf("HuggingFace scanner not available")
 	}
-	return downloads
-}
 
-// refreshDownloads re-renders the Downloads table after the active list
-// changed. Widgets that are not attached to a window are no-ops.
-func (this *QGUI) refreshDownloads() {
-	if this.downloadsTable == nil {
-		return
+	remote := hfScanner.GetModel(modelID)
+	if remote == nil {
+		return fmt.Errorf("could not find model %s on HuggingFace", modelID)
 	}
+
+	// Update the local model with fresh metadata from remote
+	err := this.QApp.LocalModels.UpdateModelMetadata(remote)
+	if err != nil {
+		return err
+	}
+
+	// Refresh the model details screen to show updated metadata
 	fyne.Do(func() {
-		this.downloadsTable.Refresh()
-		this.updateDownloadsVisibility()
+		if this.modelDetailsSelected == modelName {
+			this.showModelDetailsContent(modelName)
+		}
+		if this.modelsTable != nil {
+			this.modelsTable.Refresh()
+		}
+	})
+	return nil
+}
+
+// downloadHuggingFaceVariant downloads a single variant of the currently
+// selected HuggingFace model, then refreshes the screen.
+func (this *QGUI) downloadHuggingFaceVariant(variantFileName string) {
+	model := this.QApp.LocalModels.GetModel(this.modelDetailsSelected)
+	if model == nil {
+		return
+	}
+	modelID := huggingFaceModelID(*model)
+	modelName := model.FullModelName()
+
+	scanner := this.QApp.RemoteModels.GetScanner("HuggingFace")
+	hfScanner, ok := scanner.(*remoterepository.HuggingFaceScanner)
+	if !ok {
+		this.notifyError("HuggingFace scanner not available")
+		return
+	}
+
+	this.jobManager.StartJob(jobs.JobRequest{
+		Type:      jobs.JobTypeDownload,
+		Name:      fmt.Sprintf("Download %s (%s)", modelName, variantFileName),
+		URL:       model.ModelURL,
+		ModelName: modelName,
+	}, func(progress func(current, total int64)) error {
+		remote := hfScanner.GetModel(modelID)
+		if remote == nil {
+			return fmt.Errorf("could not find model %s on HuggingFace", modelID)
+		}
+
+		err := this.QApp.LocalModels.DownloadVariant(remote, variantFileName, progress)
+		if err != nil {
+			return err
+		}
+
+		fyne.Do(func() {
+			if this.modelsTable != nil {
+				this.modelsTable.Refresh()
+			}
+			// Rebuild the screen: the new variant appears in the left menu,
+			// and its download button disappears.
+			if this.modelDetailsSelected == modelName {
+				this.showModelDetailsContent(modelName)
+				if this.modelDetailsList != nil && len(this.modelDetailsRows) > 1 {
+					this.modelDetailsList.Select(1) // the Download row
+				}
+			}
+		})
+		return nil
 	})
 }
 
-// downloadJobName returns the name shown on the Downloads screen for a model
-// download job, including the single variant when one is being fetched.
-func downloadJobName(action modelInstallAction, modelName string, variantFile string) string {
-	if variantFile != "" {
-		return fmt.Sprintf("%s %s (%s)", action.verb, modelName, variantFile)
+// refreshModelMetadata starts a job to refresh the metadata of the currently
+// selected model from its source.
+func (this *QGUI) refreshModelMetadata() {
+	modelName := this.modelDetailsSelected
+	if modelName == "" {
+		return
 	}
-	return fmt.Sprintf("%s %s", action.verb, modelName)
+
+	model := this.QApp.LocalModels.GetModel(modelName)
+	if model == nil {
+		this.notifyError("Model not found: " + modelName)
+		return
+	}
+
+	// Only HuggingFace models can have their metadata refreshed from remote
+	if !isHuggingFaceModel(*model) {
+		this.notifyError("Metadata refresh is only available for HuggingFace models")
+		return
+	}
+
+	this.startJob(jobs.JobRequest{
+		Type:      jobs.JobTypeRefreshModelMetadata,
+		Name:      fmt.Sprintf("Refresh metadata %s", modelName),
+		URL:       model.ModelURL,
+		ModelName: modelName,
+		OnComplete: func(err error) {
+			fyne.Do(func() {
+				if err != nil {
+					this.notifyError(fmt.Sprintf("Failed to refresh metadata: %v", err))
+					return
+				}
+				// Refresh the model details screen to show updated metadata
+				if this.modelDetailsSelected == modelName {
+					this.showModelDetailsContent(modelName)
+				}
+				if this.modelsTable != nil {
+					this.modelsTable.Refresh()
+				}
+			})
+		},
+	})
 }

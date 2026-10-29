@@ -125,6 +125,14 @@ func (m *GGUFMetadata) detectVisionCapabilities() {
 		return
 	}
 
+	// Check for clip or siglip in architecture name (common vision encoder indicators)
+	// e.g., "clip", "siglip", "clip_vision", "siglip_vision", etc.
+	archLower := strings.ToLower(arch)
+	if strings.Contains(archLower, "clip") || strings.Contains(archLower, "siglip") {
+		m.HasVision = true
+		return
+	}
+
 	// Also check for vision-related keys in metadata
 	visionKeys := []string{
 		"general.vision",

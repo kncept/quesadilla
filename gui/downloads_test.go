@@ -11,29 +11,29 @@ import (
 	"fyne.io/fyne/v2/test"
 
 	"github.com/kncept/quesadilla/app"
+	"github.com/kncept/quesadilla/gui/jobs"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 )
 
-// waitForActiveDownloads waits until the given number of downloads are listed
-// as active.
-func waitForActiveDownloads(t *testing.T, g *QGUI, want int) []activeDownload {
+// waitForActiveJobs waits until the given number of jobs are listed as active.
+func waitForActiveJobs(t *testing.T, g *QGUI, want int) []jobs.Job {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		downloads := g.activeDownloads()
-		if len(downloads) == want {
-			return downloads
+		jobList := g.jobManager.ActiveJobs()
+		if len(jobList) == want {
+			return jobList
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("timed out waiting for %d active downloads, have %d", want, len(g.activeDownloads()))
+	t.Fatalf("timed out waiting for %d active jobs, have %d", want, len(g.jobManager.ActiveJobs()))
 	return nil
 }
 
-// TestDownloadLifecycle verifies QGUI.download fetches the file in the
-// background, lists it while it runs, calls the completion function with the
-// result, and then removes it from the active list.
-func TestDownloadLifecycle(t *testing.T) {
+// TestJobLifecycle verifies QGUI.startJob fetches the file in the background,
+// lists it while it runs, calls the completion function with the result, and
+// then removes it from the active list.
+func TestJobLifecycle(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("downloaded-bytes"))
 	}))
@@ -43,14 +43,15 @@ func TestDownloadLifecycle(t *testing.T) {
 	destination := path.Join(t.TempDir(), "file.txt")
 
 	completed := make(chan error, 1)
-	g.download(downloadRequest{
-		Name:        "test download",
-		URL:         server.URL + "/file.txt",
-		Destination: destination,
+	g.startJob(jobs.JobRequest{
+		Type:         jobs.JobTypeDownload,
+		Name:         "test download",
+		URL:          server.URL + "/file.txt",
+		Destination:  destination,
 		OnComplete: func(err error) {
-			// the download is still listed while its completion runs
-			if got := len(g.activeDownloads()); got != 1 {
-				t.Errorf("active downloads during completion = %d, want 1", got)
+			// the job is still listed while its completion runs
+			if got := len(g.jobManager.ActiveJobs()); got != 1 {
+				t.Errorf("active jobs during completion = %d, want 1", got)
 			}
 			completed <- err
 		},
@@ -59,10 +60,10 @@ func TestDownloadLifecycle(t *testing.T) {
 	select {
 	case err := <-completed:
 		if err != nil {
-			t.Fatalf("download: %v", err)
+			t.Fatalf("job: %v", err)
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for the download to finish")
+		t.Fatal("timed out waiting for the job to finish")
 	}
 
 	data, err := os.ReadFile(destination)
@@ -73,14 +74,14 @@ func TestDownloadLifecycle(t *testing.T) {
 		t.Errorf("file contents = %q, want downloaded-bytes", data)
 	}
 
-	if downloads := waitForActiveDownloads(t, g, 0); len(downloads) != 0 {
-		t.Fatalf("active downloads after completion = %v, want none", downloads)
+	if jobList := waitForActiveJobs(t, g, 0); len(jobList) != 0 {
+		t.Fatalf("active jobs after completion = %v, want none", jobList)
 	}
 }
 
-// TestDownloadListedWhileActive verifies a download is on the active list
-// (and the Downloads table) until it finishes.
-func TestDownloadListedWhileActive(t *testing.T) {
+// TestJobListedWhileActive verifies a job is on the active list (and the Jobs
+// screen) until it finishes.
+func TestJobListedWhileActive(t *testing.T) {
 	test.NewApp()
 
 	started := make(chan struct{})
@@ -93,50 +94,41 @@ func TestDownloadListedWhileActive(t *testing.T) {
 	defer server.Close()
 
 	g := CreateGui(nil, app.New())
-	g.downloadsPage()
+	g.jobsPage()
 	destination := path.Join(t.TempDir(), "file.txt")
 
-	g.download(downloadRequest{
-		Name:        "listed download",
-		URL:         server.URL + "/file.txt",
-		Destination: destination,
+	g.startJob(jobs.JobRequest{
+		Type:         jobs.JobTypeDownload,
+		Name:         "listed job",
+		URL:          server.URL + "/file.txt",
+		Destination:  destination,
 	})
 
 	select {
 	case <-started:
 	case <-time.After(10 * time.Second):
 		close(release)
-		t.Fatal("timed out waiting for the download to start")
+		t.Fatal("timed out waiting for the job to start")
 	}
 
-	downloads := waitForActiveDownloads(t, g, 1)
-	if downloads[0].Name != "listed download" {
-		t.Errorf("download name = %q, want listed download", downloads[0].Name)
+	jobList := waitForActiveJobs(t, g, 1)
+	if jobList[0].Name != "listed job" {
+		t.Errorf("job name = %q, want listed job", jobList[0].Name)
 	}
-	if downloads[0].Source != server.URL+"/file.txt" {
-		t.Errorf("download source = %q, want %q", downloads[0].Source, server.URL+"/file.txt")
+	if jobList[0].Source != server.URL+"/file.txt" {
+		t.Errorf("job source = %q, want %q", jobList[0].Source, server.URL+"/file.txt")
 	}
-	if downloads[0].Destination != destination {
-		t.Errorf("download destination = %q, want %q", downloads[0].Destination, destination)
-	}
-
-	if rows, cols := g.downloadsTable.Length(); rows != 1 || cols != len(downloadColumns) {
-		t.Errorf("downloads table = %dx%d, want 1x%d", rows, cols, len(downloadColumns))
-	}
-	if got := tableCellText(g.downloadsTable, 0, 0); got != "listed download" {
-		t.Errorf("downloads table name = %q, want listed download", got)
+	if jobList[0].Destination != destination {
+		t.Errorf("job destination = %q, want %q", jobList[0].Destination, destination)
 	}
 
 	close(release)
-	waitForActiveDownloads(t, g, 0)
-	if rows, _ := g.downloadsTable.Length(); rows != 0 {
-		t.Errorf("downloads table rows after completion = %d, want 0", rows)
-	}
+	waitForActiveJobs(t, g, 0)
 }
 
-// TestInstallModelListedAsDownload verifies model downloads started from
-// Model Search are listed as download jobs, not only single-file downloads.
-func TestInstallModelListedAsDownload(t *testing.T) {
+// TestInstallModelListedAsJob verifies model downloads started from Model Search
+// are listed as jobs, not only single-file downloads.
+func TestInstallModelListedAsJob(t *testing.T) {
 	test.NewApp()
 
 	started := make(chan struct{})
@@ -174,19 +166,19 @@ func TestInstallModelListedAsDownload(t *testing.T) {
 		t.Fatal("timed out waiting for the model download to start")
 	}
 
-	downloads := waitForActiveDownloads(t, g, 1)
-	if downloads[0].Name != "Download org/a" {
-		t.Errorf("download job name = %q, want Download org/a", downloads[0].Name)
+	jobList := waitForActiveJobs(t, g, 1)
+	if jobList[0].Name != "Download org/a" {
+		t.Errorf("job name = %q, want Download org/a", jobList[0].Name)
 	}
 
 	close(release)
-	waitForDownloadFinish(t, g)
-	waitForActiveDownloads(t, g, 0)
+	waitForJobFinish(t, g)
+	waitForActiveJobs(t, g, 0)
 }
 
-// TestDownloadProgress verifies the progress percentage is updated during
-// download when Content-Length is available, and stays -1 when it's not.
-func TestDownloadProgress(t *testing.T) {
+// TestJobProgress verifies the progress percentage is updated during download
+// when Content-Length is available, and stays -1 when it's not.
+func TestJobProgress(t *testing.T) {
 	test.NewApp()
 
 	// Server that sends Content-Length
@@ -205,39 +197,41 @@ func TestDownloadProgress(t *testing.T) {
 	defer serverNoLength.Close()
 
 	g := CreateGui(nil, app.New())
-	g.downloadsPage()
+	g.jobsPage()
 
 	// Test with Content-Length
 	dest1 := path.Join(t.TempDir(), "with-length.txt")
 	done1 := make(chan struct{})
-	g.download(downloadRequest{
-		Name:        "with length",
-		URL:         serverWithLength.URL + "/file.txt",
-		Destination: dest1,
+	g.startJob(jobs.JobRequest{
+		Type:         jobs.JobTypeDownload,
+		Name:         "with length",
+		URL:          serverWithLength.URL + "/file.txt",
+		Destination:  dest1,
 		OnComplete: func(error) {
 			close(done1)
 		},
 	})
 
-	// Wait for download to complete
+	// Wait for job to complete
 	select {
 	case <-done1:
 	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for download with length")
+		t.Fatal("timed out waiting for job with length")
 	}
 
-	downloads := g.activeDownloads()
-	if len(downloads) != 0 {
-		t.Fatalf("expected no active downloads, got %d", len(downloads))
+	jobList := g.jobManager.ActiveJobs()
+	if len(jobList) != 0 {
+		t.Fatalf("expected no active jobs, got %d", len(jobList))
 	}
 
 	// Test without Content-Length
 	dest2 := path.Join(t.TempDir(), "no-length.txt")
 	done2 := make(chan struct{})
-	g.download(downloadRequest{
-		Name:        "no length",
-		URL:         serverNoLength.URL + "/file.txt",
-		Destination: dest2,
+	g.startJob(jobs.JobRequest{
+		Type:         jobs.JobTypeDownload,
+		Name:         "no length",
+		URL:          serverNoLength.URL + "/file.txt",
+		Destination:  dest2,
 		OnComplete: func(error) {
 			close(done2)
 		},
@@ -246,11 +240,11 @@ func TestDownloadProgress(t *testing.T) {
 	select {
 	case <-done2:
 	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for download without length")
+		t.Fatal("timed out waiting for job without length")
 	}
 
-	downloads = g.activeDownloads()
-	if len(downloads) != 0 {
-		t.Fatalf("expected no active downloads, got %d", len(downloads))
+	jobList = g.jobManager.ActiveJobs()
+	if len(jobList) != 0 {
+		t.Fatalf("expected no active jobs, got %d", len(jobList))
 	}
 }

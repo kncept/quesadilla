@@ -113,13 +113,13 @@ func waitForSearchFinish(t *testing.T, g *QGUI) {
 	t.Fatal("timed out waiting for the model search to finish")
 }
 
-// waitForDownloadFinish blocks until a model download/import/link in progress
-// has finished (no install is reported in flight).
-func waitForDownloadFinish(t *testing.T, g *QGUI) {
+// waitForJobFinish blocks until a model job in progress has finished (no
+// install is reported in flight).
+func waitForJobFinish(t *testing.T, g *QGUI) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if g.downloadsInFlight == 0 {
+		if g.jobsInFlight == 0 {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -459,7 +459,7 @@ func TestModelSearchLocalAiInstallButtonTap(t *testing.T) {
 	}
 
 	tapButtonCenter(t, installButton)
-	waitForDownloadFinish(t, g)
+	waitForJobFinish(t, g)
 
 	if got := g.searchStatusLabel.Text; got != "Installed tiny-llama" {
 		t.Errorf("status = %q, want Installed tiny-llama", got)
@@ -509,7 +509,7 @@ func TestModelSearchLocalAiStates(t *testing.T) {
 		t.Fatal("expected a Link button on the new row")
 	}
 	tapButtonCenter(t, linkButton)
-	waitForDownloadFinish(t, g)
+	waitForJobFinish(t, g)
 
 	if got := g.searchStatusLabel.Text; got != "Linked tiny-llama" {
 		t.Errorf("status = %q, want Linked tiny-llama", got)
@@ -529,7 +529,7 @@ func TestModelSearchLocalAiStates(t *testing.T) {
 		t.Fatal("expected an Install button on the linked row")
 	}
 	tapButtonCenter(t, installButton)
-	waitForDownloadFinish(t, g)
+	waitForJobFinish(t, g)
 
 	if got := cellButtons(); !got["Uninstall"] || len(got) != 1 {
 		t.Errorf("installed model buttons = %v, want a single Uninstall", got)
@@ -545,7 +545,7 @@ func TestModelSearchLocalAiStates(t *testing.T) {
 		t.Fatal("expected an Uninstall button on the installed row")
 	}
 	tapButtonCenter(t, uninstallButton)
-	waitForDownloadFinish(t, g)
+	waitForJobFinish(t, g)
 
 	if got := g.searchStatusLabel.Text; got != "Uninstalled tiny-llama" {
 		t.Errorf("status = %q, want Uninstalled tiny-llama", got)
@@ -607,7 +607,7 @@ func TestModelSearchDownloadFromURL(t *testing.T) {
 		t.Fatalf("found %d buttons in the rendered page, want 1", len(buttons))
 	}
 	tapButtonCenter(t, buttons[0])
-	waitForDownloadFinish(t, g)
+	waitForJobFinish(t, g)
 
 	if got := g.searchStatusLabel.Text; got != "Downloaded org/a" {
 		t.Errorf("status = %q, want Downloaded org/a", got)
@@ -666,7 +666,7 @@ func TestModelSearchDownloadModelNotFound(t *testing.T) {
 		t.Fatalf("found %d buttons in the rendered page, want 1", len(buttons))
 	}
 	tapButtonCenter(t, buttons[0])
-	waitForDownloadFinish(t, g)
+	waitForJobFinish(t, g)
 
 	if got := g.searchStatusLabel.Text; got != "Download failed: ZTest model org/a not found" {
 		t.Errorf("status = %q, want the failure reported", got)

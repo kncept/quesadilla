@@ -20,6 +20,7 @@ import (
 
 	qapp "github.com/kncept/quesadilla/app"
 	"github.com/kncept/quesadilla/backend/running"
+	"github.com/kncept/quesadilla/gui/jobs"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/utils/qenv"
 )
@@ -72,14 +73,13 @@ type QGUI struct {
 	modelDetailsRemoteVariants []modelDefinitions.ModelVariant
 	modelDetailsRemoteLoaded   bool
 	modelDetailsRemoteLoading  bool
+	modelDetailsRefreshButton  *widget.Button
 
-	// Active downloads and download jobs, shown on the Downloads screen. The
-	// list is guarded by downloadsMu because downloads finish in the
-	// background. Nil until the main window is built.
-	downloadsMu      sync.Mutex
-	downloads        []*activeDownload
-	downloadsTable   *widget.Table
-	noDownloadsLabel *widget.Label
+	// Job management
+	jobManager *jobs.JobManager
+	jobsScreen *jobs.JobsScreen
+
+	// Sidebar list for programmatic tab switching
 
 	// Sidebar list for programmatic tab switching
 	sidebarList *widget.List
@@ -90,7 +90,7 @@ type QGUI struct {
 	// form holds the chosen directory and depth, and the HuggingFace search
 	// box holds the query for a scanner that supports searching.
 	searchRunning          bool
-	downloadsInFlight      int
+	jobsInFlight           int
 	searchScannersList     *widget.List
 	searchSpinner          *widget.ProgressBarInfinite
 	searchStatusLabel      *widget.Label
@@ -132,6 +132,9 @@ func (this *QGUI) Start() {
 	defer release()
 
 	this.app = app.NewWithID("com.github.kncept.quesadilla")
+
+	// Initialize job manager
+	this.jobManager = jobs.NewJobManager()
 
 	if trayApp, ok := this.app.(desktop.App); ok {
 		this.setupTray(trayApp)
@@ -212,7 +215,11 @@ func acquireInstanceLock(lockDir string) (func(), bool) {
 }
 
 func CreateGui(SysLink SystemAgnosticOperations, qApp *qapp.QApp) *QGUI {
-	return &QGUI{SysLink: SysLink, QApp: qApp}
+	return &QGUI{
+		SysLink:   SysLink,
+		QApp:      qApp,
+		jobManager: jobs.NewJobManager(),
+	}
 }
 
 // RunningModelNames returns the names of the models currently running.
@@ -280,12 +287,6 @@ func (this *QGUI) refreshDynamicPages() {
 				this.updateRunningModelsVisibility()
 			})
 		}
-		if this.downloadsTable != nil {
-			fyne.Do(func() {
-				this.downloadsTable.Refresh()
-				this.updateDownloadsVisibility()
-			})
-		}
 	})
 }
 
@@ -327,10 +328,10 @@ func (this *QGUI) showMainWindow() {
 // and a content view taking up the rest of the window.
 func (this *QGUI) mainContent() *fyne.Container {
 	// Sidebar menu items - one per screen, per docs/GUI.md
-	sidebarItems := []string{"Overview", "Models", "Model Details", "Backends", "Model Search", "Downloads"}
+	sidebarItems := []string{"Overview", "Models", "Model Details", "Backends", "Model Search", "Jobs"}
 
 	// One content page per sidebar item; only the selected page is shown.
-	pages := container.NewStack(this.overviewPage(), this.modelsPage(), this.modelDetailsPage(), this.backendsPage(), this.modelSearchPage(), this.downloadsPage())
+	pages := container.NewStack(this.overviewPage(), this.modelsPage(), this.modelDetailsPage(), this.backendsPage(), this.modelSearchPage(), this.jobsPage())
 
 	// The list sizes itself to its template item, so use the longest item
 	// as the template to guarantee the sidebar is wide enough for all items.

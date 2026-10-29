@@ -249,6 +249,78 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 	return nil
 }
 
+// UpdateModelMetadata updates the local model's metadata from the remote model,
+// without downloading any variant files. It refreshes fields like description,
+// license, variants list, etc., then rescans the repository.
+// Only variants that have been downloaded (Location is empty or not https) are kept.
+// Variants with https locations are removed from the config.
+func (this *LocalRepository) UpdateModelMetadata(scannedModel *definitions.RemoteModel) error {
+	modelsDir := qenv.QModelsDirectory(scannedModel.ModelType)
+	modelDir := path.Join(modelsDir, modelFamilyDirectory(scannedModel.ModelFamily), scannedModel.ModelName)
+
+	// Load existing local model metadata
+	qm := loadQModel(modelDir)
+	if qm.ModelName == "" {
+		return fmt.Errorf("model not installed locally: %s", scannedModel.FullModelName())
+	}
+
+	// Update metadata from remote
+	qm.ModelFamily = modelFamilyName(scannedModel.ModelFamily)
+	qm.ModelName = scannedModel.ModelName
+	qm.ModelSource = scannedModel.ModelSource
+	qm.ModelType = scannedModel.ModelType
+	if scannedModel.ModelURL != "" {
+		qm.ModelURL = scannedModel.ModelURL
+	}
+	if scannedModel.LicenceName != "" {
+		qm.LicenceName = scannedModel.LicenceName
+	}
+
+	// Update variants list from remote (but keep local file info like FileSize, ImportedAt)
+	remoteVariants := make(map[string]definitions.ModelVariant)
+	for _, v := range scannedModel.Variants {
+		remoteVariants[v.FileName] = v
+	}
+
+	// Merge remote variants into local variants, but only keep locally downloaded variants
+	var mergedVariants []definitions.ModelVariant
+	for _, localVariant := range qm.Variants {
+		// Skip variants that have https location (not downloaded)
+		if strings.HasPrefix(localVariant.Location, "https://") {
+			continue
+		}
+		if remoteVariant, ok := remoteVariants[localVariant.FileName]; ok {
+			// Update with remote metadata but preserve local file info
+			merged := remoteVariant
+			merged.FileSize = localVariant.FileSize
+			merged.ImportedAt = localVariant.ImportedAt
+			merged.LinkedModel = localVariant.LinkedModel
+			merged.Location = localVariant.Location
+			mergedVariants = append(mergedVariants, merged)
+			delete(remoteVariants, localVariant.FileName)
+		} else {
+			// Keep local variant that's not in remote (but only if not https)
+			mergedVariants = append(mergedVariants, localVariant)
+		}
+	}
+
+	// Do NOT add new remote variants that aren't installed locally
+	// Only keep variants that have been downloaded
+
+	qm.Variants = mergedVariants
+
+	// Fetch licence if not already present
+	if err := fetchLicence(&qm, scannedModel.LicenceFile, modelDir, nil); err != nil {
+		log.Printf("local repository: fetching the licence for %s: %v", scannedModel.FullModelName(), err)
+	}
+
+	if err := writeQModel(modelDir, qm); err != nil {
+		return err
+	}
+	this.scan()
+	return nil
+}
+
 // fetchLicence fetches the model's licence file (from a URL or a local path)
 // into the model directory, when it is not stored there already. The file is
 // stored under its base name, recorded in the metadata.

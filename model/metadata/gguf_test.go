@@ -76,6 +76,47 @@ func TestDetectVisionCapabilities(t *testing.T) {
 			extraMetadata:  map[string]any{"llama.mmproj": "/path/to/mmproj"},
 			expectedVision: true,
 		},
+		// CLIP/SigLIP architecture detection
+		{
+			name:           "clip architecture",
+			architecture:   "clip",
+			expectedVision: true,
+		},
+		{
+			name:           "siglip architecture",
+			architecture:   "siglip",
+			expectedVision: true,
+		},
+		{
+			name:           "clip_vision architecture",
+			architecture:   "clip_vision",
+			expectedVision: true,
+		},
+		{
+			name:           "siglip_vision architecture",
+			architecture:   "siglip_vision",
+			expectedVision: true,
+		},
+		{
+			name:           "CLIP architecture (uppercase)",
+			architecture:   "CLIP",
+			expectedVision: true,
+		},
+		{
+			name:           "SigLIP architecture (mixed case)",
+			architecture:   "SigLIP",
+			expectedVision: true,
+		},
+		{
+			name:           "my_custom_clip_model architecture",
+			architecture:   "my_custom_clip_model",
+			expectedVision: true,
+		},
+		{
+			name:           "llama architecture with clip in name (should not match)",
+			architecture:   "llama",
+			expectedVision: false,
+		},
 	}
 
 	for _, tc := range testCases {

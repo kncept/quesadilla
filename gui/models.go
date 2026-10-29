@@ -400,6 +400,12 @@ func (this *QGUI) modelDetailsPage() fyne.CanvasObject {
 	})
 	this.modelDetailsSelect.PlaceHolder = "Select a model..."
 
+	// Refresh metadata button - appears below the dropdown
+	this.modelDetailsRefreshButton = widget.NewButtonWithIcon("Refresh Metadata", theme.ViewRefreshIcon(), func() {
+		this.refreshModelMetadata()
+	})
+	this.modelDetailsRefreshButton.Disable() // disabled until a model is selected
+
 	this.modelDetailsList = widget.NewList(
 		func() int {
 			return len(this.modelDetailsRows)
@@ -444,6 +450,8 @@ func (this *QGUI) modelDetailsPage() fyne.CanvasObject {
 	this.modelDetailsContent = container.NewBorder(
 		container.NewVBox(
 			this.modelDetailsSelect,
+			widget.NewSeparator(),
+			container.NewHBox(this.modelDetailsRefreshButton),
 			widget.NewSeparator(),
 		),
 		nil, nil, nil,
@@ -499,7 +507,15 @@ func (this *QGUI) showModelDetailsContent(modelName string) {
 		this.modelDetailsRows = nil
 		this.modelDetailsList.Refresh()
 		this.showModelDetailsMessage("Model not found: " + modelName)
+		if this.modelDetailsRefreshButton != nil {
+			this.modelDetailsRefreshButton.Disable()
+		}
 		return
+	}
+
+	// Enable the refresh metadata button when a model is selected
+	if this.modelDetailsRefreshButton != nil {
+		this.modelDetailsRefreshButton.Enable()
 	}
 
 	// Left menu: Model, then Download when the model can fetch more variants,
@@ -554,6 +570,9 @@ func (this *QGUI) showModelDetailsMessage(message string) {
 	this.modelDetailsModelView.Add(wrappedLabel(message))
 	this.modelDetailsModelView.Refresh()
 	this.showModelDetailsView(this.modelDetailsModelScroll)
+	if this.modelDetailsRefreshButton != nil {
+		this.modelDetailsRefreshButton.Disable()
+	}
 }
 
 // selectModelDetailsRow shows the view for the given left-menu row.
@@ -842,71 +861,6 @@ func (this *QGUI) fetchModelDetailsRemoteVariants(m modelDefinitions.Model) {
 			this.modelDetailsRemoteModel = modelName
 			this.modelDetailsRemoteVariants = variants
 			this.buildModelDetailsDownloadView()
-		})
-	}()
-}
-
-// downloadHuggingFaceVariant downloads a single variant of the currently
-// selected HuggingFace model, then refreshes the screen.
-func (this *QGUI) downloadHuggingFaceVariant(variantFileName string) {
-	model := this.QApp.LocalModels.GetModel(this.modelDetailsSelected)
-	if model == nil {
-		return
-	}
-	modelID := huggingFaceModelID(*model)
-	modelName := model.FullModelName()
-
-	scanner := this.QApp.RemoteModels.GetScanner(remoterepository.HuggingFaceScannerName)
-	hfScanner, ok := scanner.(*remoterepository.HuggingFaceScanner)
-	if !ok {
-		this.notifyError("HuggingFace scanner not available")
-		return
-	}
-
-	download := this.addDownload(
-		fmt.Sprintf("Download %s (%s)", modelName, variantFileName),
-		model.ModelURL,
-		"",
-	)
-
-	go func() {
-		remote := hfScanner.GetModel(modelID)
-		if remote == nil {
-			fyne.Do(func() {
-				this.notifyError(fmt.Sprintf("Could not find model %s on HuggingFace", modelID))
-				this.removeDownload(download)
-			})
-			return
-		}
-
-		err := this.QApp.LocalModels.DownloadVariant(remote, variantFileName, func(current, total int64) {
-			if total > 0 {
-				download.Progress = int((current * 100) / total)
-			} else {
-				download.Progress = -1
-			}
-			this.refreshDownloads()
-		})
-		fyne.Do(func() {
-			if err != nil {
-				this.notifyError(fmt.Sprintf("Download failed: %v", err))
-				this.removeDownload(download)
-				return
-			}
-			if this.modelsTable != nil {
-				this.modelsTable.Refresh()
-			}
-			// Rebuild the screen: the new variant appears in the left menu,
-			// and its download button disappears.
-			if this.modelDetailsSelected == modelName {
-				this.showModelDetailsContent(modelName)
-				if this.modelDetailsList != nil && len(this.modelDetailsRows) > 1 {
-					this.modelDetailsList.Select(1) // the Download row
-				}
-			}
-			// the download is finished once its completion has updated the
-			// screen, so take it off the active list last
-			this.removeDownload(download)
 		})
 	}()
 }

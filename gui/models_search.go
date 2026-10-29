@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/kncept/quesadilla/gui/jobs"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/model/remoterepository"
 )
@@ -643,9 +644,9 @@ func (this *QGUI) setSearchQueryBarVisible(visible bool) {
 // results area. Last it clears the scanner selection and marks the search as
 // finished, so the same scanner can be picked again to re-run a scan.
 func (this *QGUI) finishModelSearch(models []modelDefinitions.RemoteModel, err error) {
-	// the search and the downloads share the spinner, so only hide it when
-	// no download is still in progress
-	if this.downloadsInFlight == 0 {
+	// the search and the jobs share the spinner, so only hide it when
+	// no job is still in progress
+	if this.jobsInFlight == 0 {
 		this.searchSpinner.Hide()
 	}
 	if this.searchFilesystemForm != nil {
@@ -724,16 +725,16 @@ func (this *QGUI) linkModel(m modelDefinitions.RemoteModel) {
 // variantFile installs every variant. The work runs in the background, with
 // the spinner and the status label showing progress.
 func (this *QGUI) installModel(m modelDefinitions.RemoteModel, variantFile string, action modelInstallAction) {
-	this.downloadsInFlight++
+	this.jobsInFlight++
 	this.searchSpinner.Show()
 	this.searchStatusLabel.Show()
 	this.searchStatusLabel.SetText(fmt.Sprintf("%sing %s...", action.verb, m.FullModelName()))
 
 	// Links do not copy or download anything, so only the download jobs are
-	// listed on the Downloads screen.
-	var download *activeDownload
+	// listed on the Jobs screen.
+	var job *jobs.Job
 	if !action.link {
-		download = this.addDownload(downloadJobName(action, m.FullModelName(), variantFile), m.ModelURL, "")
+		job = this.jobManager.AddJob(jobs.JobTypeDownload, jobs.JobName(action.verb, m.FullModelName(), variantFile), m.ModelURL, "", m.FullModelName())
 	}
 
 	go func() {
@@ -750,28 +751,35 @@ func (this *QGUI) installModel(m modelDefinitions.RemoteModel, variantFile strin
 			} else if variantFile != "" {
 				err = this.QApp.LocalModels.DownloadVariant(remote, variantFile, func(current, total int64) {
 					if total > 0 {
-						download.Progress = int((current * 100) / total)
+						job.Progress = int((current * 100) / total)
 					} else {
-						download.Progress = -1
+						job.Progress = -1
 					}
-					this.refreshDownloads()
+					this.jobManager.NotifyChange()
 				})
 			} else {
 				err = this.QApp.LocalModels.DownloadModel(remote, func(current, total int64) {
 					if total > 0 {
-						download.Progress = int((current * 100) / total)
+						job.Progress = int((current * 100) / total)
 					} else {
-						download.Progress = -1
+						job.Progress = -1
 					}
-					this.refreshDownloads()
+					this.jobManager.NotifyChange()
 				})
 			}
 		}
+		if job != nil {
+			job.Error = err
+			job.Completed = true
+			job.Progress = 100
+			this.jobManager.NotifyChange()
+		}
+
 		fyne.Do(func() {
 			this.finishModelAction(action, m.FullModelName(), err)
-			// the download is finished once its completion has updated the
+			// the job is finished once its completion has updated the
 			// screen, so take it off the active list last
-			this.removeDownload(download)
+			this.jobManager.RemoveJob(job)
 		})
 	}()
 }
@@ -782,7 +790,7 @@ func (this *QGUI) installModel(m modelDefinitions.RemoteModel, variantFile strin
 // work runs in the background, with the spinner and the status label showing
 // progress.
 func (this *QGUI) removeLocalModel(m modelDefinitions.Model, action modelInstallAction) {
-	this.downloadsInFlight++
+	this.jobsInFlight++
 	this.searchSpinner.Show()
 	this.searchStatusLabel.Show()
 	this.searchStatusLabel.SetText(fmt.Sprintf("%sing %s...", action.verb, m.FullModelName()))
@@ -800,10 +808,10 @@ func (this *QGUI) removeLocalModel(m modelDefinitions.Model, action modelInstall
 // row's buttons reflect the new state) and of the installed-models table (so
 // the model appears on the Models screen).
 func (this *QGUI) finishModelAction(action modelInstallAction, modelName string, err error) {
-	if this.downloadsInFlight > 0 {
-		this.downloadsInFlight--
+	if this.jobsInFlight > 0 {
+		this.jobsInFlight--
 	}
-	if this.downloadsInFlight == 0 {
+	if this.jobsInFlight == 0 {
 		this.searchSpinner.Hide()
 	}
 	if err != nil {
