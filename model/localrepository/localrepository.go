@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kncept/quesadilla/model/definitions"
+	"github.com/kncept/quesadilla/model/metadata"
 	"github.com/kncept/quesadilla/utils/qenv"
 	"github.com/kncept/quesadilla/utils/qhttp"
 )
@@ -234,6 +235,11 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 		if info, err := os.Stat(path.Join(modelDir, variant.FileName)); err == nil {
 			variant.FileSize = info.Size()
 		}
+		// Extract embedded metadata from GGUF files
+		if scannedModel.ModelType == string(definitions.ModelTypeGGUF) {
+			variantPath := path.Join(modelDir, variant.FileName)
+			variant.EmbeddedMetadata = extractEmbeddedMetadata(variantPath)
+		}
 		upsertVariant(&qm, variant)
 	}
 
@@ -309,6 +315,14 @@ func (this *LocalRepository) UpdateModelMetadata(scannedModel *definitions.Remot
 
 	qm.Variants = mergedVariants
 
+	// Extract embedded metadata for GGUF variants
+	if scannedModel.ModelType == string(definitions.ModelTypeGGUF) {
+		for i := range qm.Variants {
+			variantPath := path.Join(modelDir, qm.Variants[i].FileName)
+			qm.Variants[i].EmbeddedMetadata = extractEmbeddedMetadata(variantPath)
+		}
+	}
+
 	// Fetch licence if not already present
 	if err := fetchLicence(&qm, scannedModel.LicenceFile, modelDir, nil); err != nil {
 		log.Printf("local repository: fetching the licence for %s: %v", scannedModel.FullModelName(), err)
@@ -352,6 +366,24 @@ func upsertVariant(qm *definitions.QModel, v definitions.ModelVariant) {
 		}
 	}
 	qm.Variants = append(qm.Variants, v)
+}
+
+// extractEmbeddedMetadata reads the GGUF metadata from a variant file and
+// converts the raw metadata (map[string]any) to map[string]string for storage.
+// Returns nil if the file is not a GGUF file or metadata cannot be read.
+func extractEmbeddedMetadata(variantPath string) map[string]string {
+	ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
+	if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
+		return nil
+	}
+
+	result := make(map[string]string, len(ggufMeta.Raw))
+	for k, v := range ggufMeta.Raw {
+		if v != nil {
+			result[k] = fmt.Sprintf("%v", v)
+		}
+	}
+	return result
 }
 
 // tempFileName returns a single file name for the temporary download of a
@@ -652,11 +684,17 @@ func loadOrMigrateQModel(dir, family, name string, ext string) (definitions.QMod
 			if err != nil {
 				continue
 			}
-			qm.Variants = append(qm.Variants, definitions.ModelVariant{
+			variant := definitions.ModelVariant{
 				FileName:   entry.Name(),
 				FileSize:   info.Size(),
 				ImportedAt: info.ModTime(),
-			})
+			}
+			// Extract embedded metadata for GGUF files
+			if ext == ".gguf" {
+				variantPath := path.Join(dir, entry.Name())
+				variant.EmbeddedMetadata = extractEmbeddedMetadata(variantPath)
+			}
+			qm.Variants = append(qm.Variants, variant)
 		}
 	}
 	return qm, true
@@ -688,11 +726,17 @@ func reconcileVariants(qm *definitions.QModel, dir string, ext string) {
 			}
 		}
 		if !found {
-			qm.Variants = append(qm.Variants, definitions.ModelVariant{
+			variant := definitions.ModelVariant{
 				FileName:   entry.Name(),
 				FileSize:   info.Size(),
 				ImportedAt: info.ModTime(),
-			})
+			}
+			// Extract embedded metadata for GGUF files
+			if ext == ".gguf" {
+				variantPath := path.Join(dir, entry.Name())
+				variant.EmbeddedMetadata = extractEmbeddedMetadata(variantPath)
+			}
+			qm.Variants = append(qm.Variants, variant)
 		}
 	}
 	sort.Slice(qm.Variants, func(i, j int) bool {

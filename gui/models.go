@@ -13,7 +13,6 @@ import (
 
 	"github.com/kncept/quesadilla/backend/running"
 	"github.com/kncept/quesadilla/model/definitions"
-	"github.com/kncept/quesadilla/model/metadata"
 	"github.com/kncept/quesadilla/model/remoterepository"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
@@ -688,36 +687,27 @@ func (this *QGUI) buildModelDetailsVariantView(m definitions.Model, index int) {
 		}
 	}
 
-	// For GGUF models, read and display the raw GGUF metadata
-	if m.ModelType == string(definitions.ModelTypeGGUF) {
-		this.addRawGGUFMetadata(m, v)
+	// For GGUF models, display the embedded metadata from the variant
+	if m.ModelType == string(definitions.ModelTypeGGUF) && v.EmbeddedMetadata != nil && len(v.EmbeddedMetadata) > 0 {
+		this.addEmbeddedGGUFMetadata(v)
 	}
 
 	this.modelDetailsVariantView.Refresh()
 }
 
-// addRawGGUFMetadata reads the GGUF file's raw metadata and adds it to the variant view.
-func (this *QGUI) addRawGGUFMetadata(m definitions.Model, v definitions.ModelVariant) {
-	variantPath := m.VariantPath(v)
-	if variantPath == "" {
-		return
-	}
-
-	ggufMetadata, err := metadata.ReadGGUFMetadata(variantPath)
-	if err != nil {
-		// Silently skip if we can't read the metadata
-		return
-	}
-
-	if ggufMetadata == nil || ggufMetadata.Raw == nil || len(ggufMetadata.Raw) == 0 {
+// addEmbeddedGGUFMetadata adds the embedded GGUF metadata to the variant view.
+// Uses the EmbeddedMetadata field from the ModelVariant (populated at download/scan time)
+// instead of re-parsing the GGUF file.
+func (this *QGUI) addEmbeddedGGUFMetadata(v definitions.ModelVariant) {
+	if v.EmbeddedMetadata == nil || len(v.EmbeddedMetadata) == 0 {
 		return
 	}
 
 	this.modelDetailsVariantView.Add(widget.NewSeparator())
 	this.modelDetailsVariantView.Add(headingLabel("Raw GGUF Metadata"))
 
-	// Format the raw metadata as a string for display
-	rawText := formatRawMetadata(ggufMetadata.Raw)
+	// Format the embedded metadata as a string for display
+	rawText := formatEmbeddedMetadata(v.EmbeddedMetadata)
 
 	// Create a scrollable text area for the raw metadata
 	textWidget := widget.NewMultiLineEntry()
@@ -733,8 +723,8 @@ func (this *QGUI) addRawGGUFMetadata(m definitions.Model, v definitions.ModelVar
 	this.modelDetailsVariantView.Add(scroll)
 }
 
-// formatRawMetadata formats the raw metadata map as a readable string.
-func formatRawMetadata(raw map[string]any) string {
+// formatEmbeddedMetadata formats the embedded metadata map as a readable string.
+func formatEmbeddedMetadata(raw map[string]string) string {
 	if raw == nil || len(raw) == 0 {
 		return "(empty)"
 	}
@@ -757,29 +747,10 @@ func formatRawMetadata(raw map[string]any) string {
 	var lines []string
 	for _, k := range keys {
 		v := raw[k]
-		lines = append(lines, fmt.Sprintf("%s: %v", k, formatMetadataValue(v)))
+		lines = append(lines, fmt.Sprintf("%s: %q", k, v))
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-// formatMetadataValue formats a metadata value for display.
-func formatMetadataValue(v any) string {
-	if v == nil {
-		return "<nil>"
-	}
-	switch val := v.(type) {
-	case string:
-		return fmt.Sprintf("%q", val)
-	case []byte:
-		return fmt.Sprintf("<binary: %d bytes>", len(val))
-	case map[string]any:
-		return fmt.Sprintf("{... %d keys ...}", len(val))
-	case []any:
-		return fmt.Sprintf("[... %d items ...]", len(val))
-	default:
-		return fmt.Sprintf("%v", val)
-	}
 }
 
 // importedAtText formats an import time for display, or returns "" when the

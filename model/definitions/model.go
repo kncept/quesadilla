@@ -38,13 +38,14 @@ const QModelFileName = "qmodel.json"
 // ImportedAt and FileSize are stamped by the local repository when a variant
 // is imported; for remote (not yet installed) variants they may be zero.
 type ModelVariant struct {
-	FileName        string    `json:"FileName"`
-	Description     string    `json:"Description,omitempty"`
-	ImportedAt      time.Time `json:"ImportedAt"`
-	FileSize        int64     `json:"FileSize"`
-	LinkedModel     bool      `json:"LinkedModel"`
-	Location        string    `json:"Location,omitempty"`
-	SupportsVision  bool      `json:"SupportsVision,omitempty"`
+	FileName          string            `json:"FileName"`
+	Description       string            `json:"Description,omitempty"`
+	ImportedAt        time.Time         `json:"ImportedAt"`
+	FileSize          int64             `json:"FileSize"`
+	LinkedModel       bool              `json:"LinkedModel"`
+	Location          string            `json:"Location,omitempty"`
+	SupportsVision    bool              `json:"SupportsVision,omitempty"`
+	EmbeddedMetadata  map[string]string `json:"EmbeddedMetadata,omitempty"`
 }
 
 // Model is an installed local model: a family and a name (together it is
