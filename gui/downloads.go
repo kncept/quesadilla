@@ -2,12 +2,38 @@ package gui
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"fyne.io/fyne/v2"
 
 	"github.com/kncept/quesadilla/gui/jobs"
 	"github.com/kncept/quesadilla/model/remoterepository"
 )
+
+// progressTracker bridges the byte-based progress callbacks of the local
+// repository (current, total) to the percentage-based progress function the
+// JobManager polls while a job runs.
+type progressTracker struct {
+	current atomic.Int64
+	total   atomic.Int64
+}
+
+// update records the latest download progress. It matches the
+// func(current, total int64) callback the local repository expects.
+func (this *progressTracker) update(current, total int64) {
+	this.current.Store(current)
+	this.total.Store(total)
+}
+
+// percent returns the download's progress as a percentage, or -1 when the
+// total size is not known.
+func (this *progressTracker) percent() int {
+	total := this.total.Load()
+	if total <= 0 {
+		return -1
+	}
+	return int(this.current.Load() * 100 / total)
+}
 
 // jobsPage renders the Jobs screen using the new jobs package.
 func (this *QGUI) jobsPage() fyne.CanvasObject {
@@ -59,8 +85,8 @@ func (this *QGUI) doRefreshModelMetadata(modelName string) error {
 	return nil
 }
 
-// downloadHuggingFaceVariant downloads a single variant of the currently
-// selected HuggingFace model, then refreshes the screen.
+// downloadHuggingFaceVariant downloads the single variant the user picked of
+// the currently selected HuggingFace model, then refreshes the screen.
 func (this *QGUI) downloadHuggingFaceVariant(variantFileName string) {
 	model := this.QApp.LocalModels.GetModel(this.modelDetailsSelected)
 	if model == nil {
@@ -76,32 +102,42 @@ func (this *QGUI) downloadHuggingFaceVariant(variantFileName string) {
 		return
 	}
 
-	this.jobManager.StartJob(fmt.Sprintf("Download %s (%s)", modelName, variantFileName), func(progress func(current, total int64)) error {
-		remote := hfScanner.GetModel(modelID)
-		if remote == nil {
-			return fmt.Errorf("could not find model %s on HuggingFace", modelID)
-		}
-
-		err := this.QApp.LocalModels.DownloadVariant(remote, variantFileName, progress)
-		if err != nil {
-			return err
-		}
-
-		fyne.Do(func() {
-			if this.modelsTable != nil {
-				this.modelsTable.Refresh()
+	progress := &progressTracker{}
+	err := this.jobManager.StartJob(
+		fmt.Sprintf("Download %s (%s)", modelName, variantFileName),
+		jobs.JobTypeDownload,
+		fmt.Sprintf("Download %s for %s", variantFileName, modelName),
+		func() error {
+			remote := hfScanner.GetModel(modelID)
+			if remote == nil {
+				return fmt.Errorf("could not find model %s on HuggingFace", modelID)
 			}
-			// Rebuild the screen: the new variant appears in the left menu,
-			// and its download button disappears.
-			if this.modelDetailsSelected == modelName {
-				this.showModelDetailsContent(modelName)
-				if this.modelDetailsList != nil && len(this.modelDetailsRows) > 1 {
-					this.modelDetailsList.Select(1) // the Download row
+			return this.QApp.LocalModels.DownloadVariant(remote, variantFileName, progress.update)
+		},
+		func(err error) {
+			fyne.Do(func() {
+				if err != nil {
+					this.notifyError(fmt.Sprintf("Failed to download %s: %v", variantFileName, err))
+					return
 				}
-			}
-		})
-		return nil
-	})
+				if this.modelsTable != nil {
+					this.modelsTable.Refresh()
+				}
+				// Rebuild the screen: the new variant appears in the left menu,
+				// and its download button disappears.
+				if this.modelDetailsSelected == modelName {
+					this.showModelDetailsContent(modelName)
+					if this.modelDetailsList != nil && len(this.modelDetailsRows) > 1 {
+						this.modelDetailsList.Select(1) // the Download row
+					}
+				}
+			})
+		},
+		progress.percent,
+	)
+	if err != nil {
+		this.notifyError(fmt.Sprintf("Could not start download: %v", err))
+	}
 }
 
 // refreshModelMetadata starts a job to refresh the metadata of the currently
@@ -124,10 +160,14 @@ func (this *QGUI) refreshModelMetadata() {
 		return
 	}
 
-	this.jobManager.StartMetadataRefreshJob(jobs.ModelRefreshParams{
-		Name:      fmt.Sprintf("Refresh metadata %s", modelName),
-		ModelName: modelName,
-		OnComplete: func(err error) {
+	err := this.jobManager.StartJob(
+		fmt.Sprintf("Refresh metadata %s", modelName),
+		jobs.JobTypeRefreshModelMetadata,
+		fmt.Sprintf("Refresh metadata for %s", modelName),
+		func() error {
+			return this.doRefreshModelMetadata(modelName)
+		},
+		func(err error) {
 			fyne.Do(func() {
 				if err != nil {
 					this.notifyError(fmt.Sprintf("Failed to refresh metadata: %v", err))
@@ -142,7 +182,9 @@ func (this *QGUI) refreshModelMetadata() {
 				}
 			})
 		},
-	}, func() error {
-		return this.doRefreshModelMetadata(modelName)
-	})
+		nil,
+	)
+	if err != nil {
+		this.notifyError(fmt.Sprintf("Could not start metadata refresh: %v", err))
+	}
 }

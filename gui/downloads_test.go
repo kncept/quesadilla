@@ -13,6 +13,7 @@ import (
 	"github.com/kncept/quesadilla/app"
 	"github.com/kncept/quesadilla/gui/jobs"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	"github.com/kncept/quesadilla/utils/qhttp"
 )
 
 // waitForActiveJobs waits until the given number of jobs are listed as active.
@@ -30,7 +31,7 @@ func waitForActiveJobs(t *testing.T, g *QGUI, want int) []jobs.Job {
 	return nil
 }
 
-// TestJobLifecycle verifies QGUI.startJob fetches the file in the background,
+// TestJobLifecycle verifies a started job fetches the file in the background,
 // lists it while it runs, calls the completion function with the result, and
 // then removes it from the active list.
 func TestJobLifecycle(t *testing.T) {
@@ -43,18 +44,25 @@ func TestJobLifecycle(t *testing.T) {
 	destination := path.Join(t.TempDir(), "file.txt")
 
 	completed := make(chan error, 1)
-	g.jobManager.StartDownloadJob(jobs.DownloadParams{
-		Name:        "test download",
-		URL:         server.URL + "/file.txt",
-		Destination: destination,
-		OnComplete: func(err error) {
+	err := g.jobManager.StartJob(
+		"test download",
+		jobs.JobTypeDownload,
+		"download a test file",
+		func() error {
+			return qhttp.DownloadFileWithProgress(server.URL+"/file.txt", path.Dir(destination), path.Base(destination), nil)
+		},
+		func(err error) {
 			// the job is still listed while its completion runs
 			if got := len(g.jobManager.ActiveJobs()); got != 1 {
 				t.Errorf("active jobs during completion = %d, want 1", got)
 			}
 			completed <- err
 		},
-	})
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("StartJob: %v", err)
+	}
 
 	select {
 	case err := <-completed:
@@ -96,11 +104,19 @@ func TestJobListedWhileActive(t *testing.T) {
 	g.jobsPage()
 	destination := path.Join(t.TempDir(), "file.txt")
 
-	g.jobManager.StartDownloadJob(jobs.DownloadParams{
-		Name:        "listed job",
-		URL:         server.URL + "/file.txt",
-		Destination: destination,
-	})
+	err := g.jobManager.StartJob(
+		"listed job",
+		jobs.JobTypeDownload,
+		"a listed job",
+		func() error {
+			return qhttp.DownloadFileWithProgress(server.URL+"/file.txt", path.Dir(destination), path.Base(destination), nil)
+		},
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("StartJob: %v", err)
+	}
 
 	select {
 	case <-started:
@@ -113,15 +129,11 @@ func TestJobListedWhileActive(t *testing.T) {
 	if jobList[0].Name != "listed job" {
 		t.Errorf("job name = %q, want listed job", jobList[0].Name)
 	}
-	params, ok := jobList[0].Metadata.(jobs.DownloadParams)
-	if !ok {
-		t.Fatalf("job metadata = %T, want jobs.DownloadParams", jobList[0].Metadata)
+	if jobList[0].Type != jobs.JobTypeDownload {
+		t.Errorf("job type = %q, want %q", jobList[0].Type, jobs.JobTypeDownload)
 	}
-	if params.URL != server.URL+"/file.txt" {
-		t.Errorf("job source = %q, want %q", params.URL, server.URL+"/file.txt")
-	}
-	if params.Destination != destination {
-		t.Errorf("job destination = %q, want %q", params.Destination, destination)
+	if jobList[0].Description != "a listed job" {
+		t.Errorf("job description = %q, want a listed job", jobList[0].Description)
 	}
 
 	close(release)
@@ -172,79 +184,31 @@ func TestInstallModelListedAsJob(t *testing.T) {
 	if jobList[0].Name != "Download org/a" {
 		t.Errorf("job name = %q, want Download org/a", jobList[0].Name)
 	}
+	if jobList[0].Type != jobs.JobTypeDownload {
+		t.Errorf("job type = %q, want %q", jobList[0].Type, jobs.JobTypeDownload)
+	}
+	if jobList[0].Description != "Download org/a" {
+		t.Errorf("job description = %q, want Download org/a", jobList[0].Description)
+	}
 
 	close(release)
 	waitForJobFinish(t, g)
 	waitForActiveJobs(t, g, 0)
 }
 
-// TestJobProgress verifies the progress percentage is updated during download
-// when Content-Length is available, and stays -1 when it's not.
-func TestJobProgress(t *testing.T) {
-	test.NewApp()
-
-	// Server that sends Content-Length
-	serverWithLength := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		data := []byte("0123456789") // 10 bytes
-		w.Header().Set("Content-Length", "10")
-		_, _ = w.Write(data)
-	}))
-	defer serverWithLength.Close()
-
-	// Server without Content-Length (chunked)
-	serverNoLength := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// No Content-Length header
-		_, _ = w.Write([]byte("data"))
-	}))
-	defer serverNoLength.Close()
-
-	g := CreateGui(nil, app.New())
-	g.jobsPage()
-
-	// Test with Content-Length
-	dest1 := path.Join(t.TempDir(), "with-length.txt")
-	done1 := make(chan struct{})
-	g.jobManager.StartDownloadJob(jobs.DownloadParams{
-		Name:        "with length",
-		URL:         serverWithLength.URL + "/file.txt",
-		Destination: dest1,
-		OnComplete: func(error) {
-			close(done1)
-		},
-	})
-
-	// Wait for job to complete
-	select {
-	case <-done1:
-	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for job with length")
+// TestProgressTracker verifies the byte-based progress callbacks are converted
+// to a percentage, with an unknown total reported as -1.
+func TestProgressTracker(t *testing.T) {
+	p := &progressTracker{}
+	if got := p.percent(); got != -1 {
+		t.Errorf("percent with no progress = %d, want -1", got)
 	}
-
-	jobList := g.jobManager.ActiveJobs()
-	if len(jobList) != 0 {
-		t.Fatalf("expected no active jobs, got %d", len(jobList))
+	p.update(5, 10)
+	if got := p.percent(); got != 50 {
+		t.Errorf("percent = %d, want 50", got)
 	}
-
-	// Test without Content-Length
-	dest2 := path.Join(t.TempDir(), "no-length.txt")
-	done2 := make(chan struct{})
-	g.jobManager.StartDownloadJob(jobs.DownloadParams{
-		Name:        "no length",
-		URL:         serverNoLength.URL + "/file.txt",
-		Destination: dest2,
-		OnComplete: func(error) {
-			close(done2)
-		},
-	})
-
-	select {
-	case <-done2:
-	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for job without length")
-	}
-
-	jobList = g.jobManager.ActiveJobs()
-	if len(jobList) != 0 {
-		t.Fatalf("expected no active jobs, got %d", len(jobList))
+	p.update(10, 10)
+	if got := p.percent(); got != 100 {
+		t.Errorf("percent = %d, want 100", got)
 	}
 }

@@ -240,12 +240,10 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 			variantPath := path.Join(modelDir, variant.FileName)
 
 			ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
-			if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
-				return nil
+			if err == nil && ggufMeta != nil && ggufMeta.Raw != nil {
+				variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
+				variant.SupportsVision = ggufMeta.HasVision
 			}
-			variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
-			variant.SupportsVision = ggufMeta.HasVision
-
 		}
 		upsertVariant(&qm, variant)
 	}
@@ -687,11 +685,10 @@ func loadOrMigrateQModel(dir, family, name string, ext string) (definitions.QMod
 			if ext == ".gguf" {
 				variantPath := path.Join(dir, entry.Name())
 				ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
-				if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
-					return qm, false
+				if err == nil && ggufMeta != nil && ggufMeta.Raw != nil {
+					variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
+					variant.SupportsVision = ggufMeta.HasVision
 				}
-				variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
-				variant.SupportsVision = ggufMeta.HasVision
 			}
 			qm.Variants = append(qm.Variants, variant)
 		}
@@ -734,11 +731,10 @@ func reconcileVariants(qm *definitions.QModel, dir string, ext string) {
 			if ext == ".gguf" {
 				variantPath := path.Join(dir, entry.Name())
 				ggufMeta, err := metadata.ReadGGUFMetadata(variantPath)
-				if err != nil || ggufMeta == nil || ggufMeta.Raw == nil {
-					return
+				if err == nil && ggufMeta != nil && ggufMeta.Raw != nil {
+					variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
+					variant.SupportsVision = ggufMeta.HasVision
 				}
-				variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
-				variant.SupportsVision = ggufMeta.HasVision
 			}
 			qm.Variants = append(qm.Variants, variant)
 		}

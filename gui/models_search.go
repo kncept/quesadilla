@@ -730,66 +730,84 @@ func (this *QGUI) installModel(m modelDefinitions.RemoteModel, variantFile strin
 	this.searchStatusLabel.Show()
 	this.searchStatusLabel.SetText(fmt.Sprintf("%sing %s...", action.verb, m.FullModelName()))
 
-	// Links do not copy or download anything, so only the download jobs are
-	// listed on the Jobs screen.
-	var job *jobs.Job
-	if !action.link {
-		j, err := this.jobManager.AddJob(jobs.JobTypeDownload, jobs.JobName(action.verb, m.FullModelName(), variantFile), jobs.DownloadParams{
-			URL:       m.ModelURL,
-			ModelName: m.FullModelName(),
-		})
-		if err != nil {
-			fmt.Printf("Failed to add job: %v\n", err)
-		} else {
-			job = j
-		}
-	}
-
-	go func() {
-		var err error
-		scanner := this.QApp.RemoteModels.GetScanner(m.ModelSource)
-		if scanner == nil {
-			err = fmt.Errorf("scanner %s is not available", m.ModelSource)
-		} else {
-			remote := scanner.GetModel(m.FullModelName())
-			if remote == nil {
-				err = fmt.Errorf("%s model %s not found", m.ModelSource, m.FullModelName())
-			} else if action.link {
-				err = this.QApp.LocalModels.LinkScannedModel(remote)
-			} else if variantFile != "" {
-				err = this.QApp.LocalModels.DownloadVariant(remote, variantFile, func(current, total int64) {
-					if total > 0 {
-						job.Progress = int((current * 100) / total)
-					} else {
-						job.Progress = -1
-					}
-					this.jobManager.NotifyChange()
-				})
-			} else {
-				err = this.QApp.LocalModels.DownloadModel(remote, func(current, total int64) {
-					if total > 0 {
-						job.Progress = int((current * 100) / total)
-					} else {
-						job.Progress = -1
-					}
-					this.jobManager.NotifyChange()
-				})
-			}
-		}
-		if job != nil {
-			job.Error = err
-			job.Completed = true
-			job.Progress = 100
-			this.jobManager.NotifyChange()
-		}
-
+	finish := func(err error) {
 		fyne.Do(func() {
 			this.finishModelAction(action, m.FullModelName(), err)
-			// the job is finished once its completion has updated the
-			// screen, so take it off the active list last
-			this.jobManager.RemoveJob(job)
 		})
-	}()
+	}
+
+	// Links do not copy or download anything, so only the download jobs are
+	// listed on the Jobs screen.
+	if action.link {
+		go func() {
+			finish(this.linkScannedModel(m))
+		}()
+		return
+	}
+
+	// The job's description names exactly what the user chose: a single
+	// variant, or the model's every variant.
+	description := fmt.Sprintf("%s %s", action.verb, m.FullModelName())
+	if variantFile != "" {
+		description = fmt.Sprintf("%s %s from %s", action.verb, variantFile, m.FullModelName())
+	}
+
+	progress := &progressTracker{}
+	err := this.jobManager.StartJob(
+		jobs.JobName(action.verb, m.FullModelName(), variantFile),
+		jobs.JobTypeDownload,
+		description,
+		func() error {
+			return this.installScannedModel(m, variantFile, progress.update)
+		},
+		func(err error) {
+			finish(err)
+		},
+		progress.percent,
+	)
+	if err != nil {
+		// The job did not start (eg it is already running); report it rather
+		// than leaving the spinner spinning forever.
+		finish(err)
+	}
+}
+
+// linkScannedModel re-resolves the model through its scanner and links it
+// into local storage.
+func (this *QGUI) linkScannedModel(m modelDefinitions.RemoteModel) error {
+	remote, err := this.resolveScannedModel(m)
+	if err != nil {
+		return err
+	}
+	return this.QApp.LocalModels.LinkScannedModel(remote)
+}
+
+// installScannedModel re-resolves the model through its scanner and downloads
+// it: only variantFile when it is set, or every variant otherwise.
+func (this *QGUI) installScannedModel(m modelDefinitions.RemoteModel, variantFile string, progress func(current, total int64)) error {
+	remote, err := this.resolveScannedModel(m)
+	if err != nil {
+		return err
+	}
+	if variantFile != "" {
+		return this.QApp.LocalModels.DownloadVariant(remote, variantFile, progress)
+	}
+	return this.QApp.LocalModels.DownloadModel(remote, progress)
+}
+
+// resolveScannedModel re-resolves a search result through the scanner that
+// produced it, so the install works from the scanner's current view of the
+// model rather than the (possibly stale) search result.
+func (this *QGUI) resolveScannedModel(m modelDefinitions.RemoteModel) (*modelDefinitions.RemoteModel, error) {
+	scanner := this.QApp.RemoteModels.GetScanner(m.ModelSource)
+	if scanner == nil {
+		return nil, fmt.Errorf("scanner %s is not available", m.ModelSource)
+	}
+	remote := scanner.GetModel(m.FullModelName())
+	if remote == nil {
+		return nil, fmt.Errorf("%s model %s not found", m.ModelSource, m.FullModelName())
+	}
+	return remote, nil
 }
 
 // removeLocalModel drops an already-installed (or linked) local model,

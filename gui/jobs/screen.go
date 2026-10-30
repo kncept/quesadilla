@@ -109,24 +109,11 @@ func (s *JobsScreen) showJobDetails(job Job) {
 	s.detailsView.Add(widget.NewLabelWithStyle("Job Details", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
 	s.detailsView.Add(widget.NewSeparator())
 	s.detailsView.Add(widget.NewLabel("Name: " + job.Name))
-	s.detailsView.Add(widget.NewLabel("Type: " + string(job.Type)))
-	s.detailsView.Add(widget.NewLabel("Status: " + status))
-	switch metadata := job.Metadata.(type) {
-	case DownloadParams:
-		if metadata.URL != "" {
-			s.detailsView.Add(widget.NewLabel("Source: " + metadata.URL))
-		}
-		if metadata.Destination != "" {
-			s.detailsView.Add(widget.NewLabel("Destination: " + metadata.Destination))
-		}
-		if metadata.ModelName != "" {
-			s.detailsView.Add(widget.NewLabel("Model: " + metadata.ModelName))
-		}
-	case ModelRefreshParams:
-		if metadata.ModelName != "" {
-			s.detailsView.Add(widget.NewLabel("Model: " + metadata.ModelName))
-		}
+	s.detailsView.Add(widget.NewLabel("Type: " + job.Type))
+	if job.Description != "" {
+		s.detailsView.Add(widget.NewLabel("Description: " + job.Description))
 	}
+	s.detailsView.Add(widget.NewLabel("Status: " + status))
 	s.detailsView.Add(widget.NewLabel("Started: " + job.Started.Format(time.RFC3339)))
 	s.detailsView.Add(widget.NewLabel("Elapsed: " + elapsed.String()))
 	s.detailsView.Add(widget.NewLabel("Progress: " + progressText))
