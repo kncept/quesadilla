@@ -41,8 +41,12 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	if modelVariant.SupportsVision {
 		mmprojPath := m.VariantPath(modelVariant)
 		args = append(args, "--mmproj", mmprojPath)
+	} else if visionVariant := m.GetDefaultVisionVariant(); visionVariant.FileName != "" {
+		// The default variant isn't vision-capable, but the model has a
+		// vision-capable variant: use it as the multimodal projector.
+		mmprojPath := m.VariantPath(visionVariant)
+		args = append(args, "--mmproj", mmprojPath)
 	}
-	// todo: hadd a get default vision model variant to the model
 
 	args = append(args,
 		"--alias", m.ModelName,

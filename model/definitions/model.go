@@ -193,3 +193,28 @@ func (m Model) GetDefaultVariantPath() string {
 	}
 	return m.VariantPath(v)
 }
+
+// GetDefaultVisionVariant returns the first vision-capable variant of the
+// model, or a zero ModelVariant if the model has no vision-capable variant.
+// For gguf models this is typically the model's mmproj (multimodal
+// projector) file, which can be passed to llama-server as --mmproj alongside
+// a text-only variant of the model.
+func (m Model) GetDefaultVisionVariant() ModelVariant {
+	for _, v := range m.Variants {
+		if v.SupportsVision {
+			return v
+		}
+	}
+	return ModelVariant{}
+}
+
+// GetDefaultVisionVariantPath returns the resolved path of the model's default
+// vision-capable variant (the first vision-capable variant), or an empty
+// string if the model has no vision-capable variant.
+func (m Model) GetDefaultVisionVariantPath() string {
+	v := m.GetDefaultVisionVariant()
+	if v.FileName == "" {
+		return ""
+	}
+	return m.VariantPath(v)
+}
