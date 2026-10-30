@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
@@ -397,6 +398,67 @@ func TestModelsTableOpenButton(t *testing.T) {
 	}
 	if findButtonByText(bareButtons, "Details") == nil {
 		t.Error("expected a Details button on every model's actions")
+	}
+}
+
+// TestFormatEmbeddedMetadataTruncatesLongValues verifies that multi-megabyte
+// metadata values (such as a GGUF tokenizer table) are reduced to a short
+// preview instead of being handed to a text widget in full. Rendering the full
+// value froze the Model Details screen.
+func TestFormatEmbeddedMetadataTruncatesLongValues(t *testing.T) {
+	huge := strings.Repeat("a", 2_500_000)
+	got := formatEmbeddedMetadata(map[string]string{
+		"general.name":          "Ornith-1.5-9B",
+		"tokenizer.ggml.tokens": huge,
+	})
+
+	if len(got) > 4*maxEmbeddedMetadataValueRunes+256 {
+		t.Fatalf("formatted metadata is %d bytes, want a bounded preview", len(got))
+	}
+	if !strings.Contains(got, "tokenizer.ggml.tokens:") {
+		t.Error("expected the long value's key to be shown")
+	}
+	if n := strings.Count(got, "a"); n > 2*maxEmbeddedMetadataValueRunes {
+		t.Errorf("formatted metadata contains %d value characters, want at most %d", n, maxEmbeddedMetadataValueRunes)
+	}
+	if !strings.Contains(got, "truncated, 2500000 characters") {
+		t.Error("expected the truncated value's full length to be reported")
+	}
+	if !strings.Contains(got, `general.name: "Ornith-1.5-9B"`) {
+		t.Error("expected short values to be unchanged")
+	}
+}
+
+// TestFormatEmbeddedMetadataEscapesBinaryValues verifies that values containing
+// control bytes or invalid UTF-8 are escaped rather than passed through to the
+// text renderer.
+func TestFormatEmbeddedMetadataEscapesBinaryValues(t *testing.T) {
+	got := formatEmbeddedMetadata(map[string]string{
+		"binary": "\x00\x01\xff\xfe",
+	})
+
+	if !utf8.ValidString(got) {
+		t.Fatalf("formatted metadata is not valid UTF-8: %q", got)
+	}
+	if strings.ContainsRune(got, 0) {
+		t.Error("formatted metadata still contains a NUL byte")
+	}
+	if !strings.Contains(got, `binary: "\x00\x01\xff\xfe"`) {
+		t.Errorf("binary value not escaped as expected: %q", got)
+	}
+}
+
+// TestFormatEmbeddedMetadataSortsKeys verifies that metadata keys are listed in
+// a stable, sorted order.
+func TestFormatEmbeddedMetadataSortsKeys(t *testing.T) {
+	got := formatEmbeddedMetadata(map[string]string{
+		"c": "3",
+		"a": "1",
+		"b": "2",
+	})
+	want := "a: \"1\"\nb: \"2\"\nc: \"3\""
+	if got != want {
+		t.Errorf("formatEmbeddedMetadata() = %q, want %q", got, want)
 	}
 }
 

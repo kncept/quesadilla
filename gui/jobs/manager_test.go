@@ -18,11 +18,10 @@ func TestJobManagerStartDownloadJob(t *testing.T) {
 	destination := "/tmp/test-download-file.txt"
 
 	completed := make(chan error, 1)
-	m.StartDownloadJob(JobRequest{
-		Type:         JobTypeDownload,
-		Name:         "test download",
-		URL:          server.URL + "/file.txt",
-		Destination:  destination,
+	m.StartDownloadJob(DownloadParams{
+		Name:        "test download",
+		URL:         server.URL + "/file.txt",
+		Destination: destination,
 		OnComplete: func(err error) {
 			completed <- err
 		},

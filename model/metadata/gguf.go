@@ -261,9 +261,17 @@ func (this *GGUFMetadata) StringifiedRawMetadata() map[string]string {
 	// Convert raw metadata to string values
 	for key, val := range this.Raw {
 		if str, ok := val.(string); ok {
+			str = fmt.Sprintf("%v", val)
+			if len(str) > 250 {
+				str = "==overflow=="
+			}
 			result[key] = str
 		} else {
-			result[key] = fmt.Sprintf("%v", val)
+			str = fmt.Sprintf("%v", val)
+			if len(str) > 250 {
+				str = "==overflow=="
+			}
+			result[key] = str
 		}
 	}
 	return result

@@ -144,13 +144,14 @@ func (this *QApp) StopAll() {
 	}
 	fmt.Printf("Stopping %d running model(s)\n", len(runningModels))
 	for _, m := range runningModels {
-		m.SendSigQuit()
+		go m.SendSigQuit() // do this async, so that we can't hang
 	}
 	sleepTime := 500 * time.Millisecond
 
 	// wait up to 30 seconds for them all to finish
 	endTime := time.Now().UnixMilli() + (30 * time.Second).Milliseconds()
 	for time.Now().UnixMilli() < endTime && len(this.registry.RunningModels()) > 0 {
+		fmt.Printf("Waiting for quit ...\n")
 		time.Sleep(sleepTime)
 	}
 
@@ -158,8 +159,9 @@ func (this *QApp) StopAll() {
 	stillRunning := this.registry.RunningModels()
 	if len(stillRunning) > 0 {
 		fmt.Printf("Killing %d model(s) that did not stop in time\n", len(stillRunning))
+		for _, m := range stillRunning {
+			go m.SendSigKill()
+		}
 	}
-	for _, m := range stillRunning {
-		m.SendSigKill()
-	}
+	fmt.Printf("All models stopped")
 }

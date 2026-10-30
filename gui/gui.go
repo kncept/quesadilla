@@ -77,7 +77,6 @@ type QGUI struct {
 
 	// Job management
 	jobManager *jobs.JobManager
-	jobs       *AppJobs
 	jobsScreen *jobs.JobsScreen
 
 	// Sidebar list for programmatic tab switching
@@ -133,9 +132,6 @@ func (this *QGUI) Start() {
 	defer release()
 
 	this.app = app.NewWithID("com.github.kncept.quesadilla")
-
-	// Initialize job manager
-	this.jobManager = jobs.NewJobManager()
 
 	if trayApp, ok := this.app.(desktop.App); ok {
 		this.setupTray(trayApp)
@@ -217,10 +213,9 @@ func acquireInstanceLock(lockDir string) (func(), bool) {
 
 func CreateGui(SysLink SystemAgnosticOperations, qApp *qapp.QApp) *QGUI {
 	return &QGUI{
-		SysLink:   SysLink,
-		QApp:      qApp,
+		SysLink:    SysLink,
+		QApp:       qApp,
 		jobManager: jobs.NewJobManager(),
-		jobs:       &AppJobs{jobManager: jobs.NewJobManager()},
 	}
 }
 

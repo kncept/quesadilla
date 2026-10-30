@@ -734,7 +734,15 @@ func (this *QGUI) installModel(m modelDefinitions.RemoteModel, variantFile strin
 	// listed on the Jobs screen.
 	var job *jobs.Job
 	if !action.link {
-		job = this.jobManager.AddJob(jobs.JobTypeDownload, jobs.JobName(action.verb, m.FullModelName(), variantFile), m.ModelURL, "", m.FullModelName())
+		j, err := this.jobManager.AddJob(jobs.JobTypeDownload, jobs.JobName(action.verb, m.FullModelName(), variantFile), jobs.DownloadParams{
+			URL:       m.ModelURL,
+			ModelName: m.FullModelName(),
+		})
+		if err != nil {
+			fmt.Printf("Failed to add job: %v\n", err)
+		} else {
+			job = j
+		}
 	}
 
 	go func() {

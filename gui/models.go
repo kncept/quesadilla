@@ -2,8 +2,10 @@ package gui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -723,34 +725,55 @@ func (this *QGUI) addEmbeddedGGUFMetadata(v definitions.ModelVariant) {
 	this.modelDetailsVariantView.Add(scroll)
 }
 
+// maxEmbeddedMetadataValueRunes caps how much of a single embedded metadata
+// value the Model Details view renders. GGUF metadata can carry multi-megabyte
+// tokenizer tables (tokens, merges), and handing one of those to a text widget
+// freezes the UI while it is measured and laid out. Longer values are shown as
+// a preview with their full length, so the view stays responsive.
+const maxEmbeddedMetadataValueRunes = 512
+
 // formatEmbeddedMetadata formats the embedded metadata map as a readable string.
 func formatEmbeddedMetadata(raw map[string]string) string {
 	if raw == nil || len(raw) == 0 {
 		return "(empty)"
 	}
 
-	var keys []string
+	keys := make([]string, 0, len(raw))
 	for k := range raw {
 		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 
-	// Sort keys for consistent output
-	// Simple bubble sort since we don't want to import sort just for this
-	for i := 0; i < len(keys); i++ {
-		for j := i + 1; j < len(keys); j++ {
-			if keys[i] > keys[j] {
-				keys[i], keys[j] = keys[j], keys[i]
-			}
-		}
-	}
-
-	var lines []string
+	lines := make([]string, 0, len(keys))
 	for _, k := range keys {
 		v := raw[k]
-		lines = append(lines, fmt.Sprintf("%s: %q", k, v))
+		preview, truncated := truncateMetadataValue(v, maxEmbeddedMetadataValueRunes)
+		if truncated {
+			preview = fmt.Sprintf("%s... (truncated, %d characters)", preview, utf8.RuneCountInString(v))
+		}
+		// %q escapes control bytes and invalid UTF-8, so binary metadata is
+		// shown as text instead of being passed through to the text shaper.
+		lines = append(lines, fmt.Sprintf("%s: %q", k, preview))
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// truncateMetadataValue returns at most limit runes of s, and whether s was
+// longer. It walks the string rather than converting it to a []rune so that
+// very long values do not allocate a copy of their full contents.
+func truncateMetadataValue(s string, limit int) (string, bool) {
+	if limit < 0 {
+		limit = 0
+	}
+	count := 0
+	for i := range s {
+		if count == limit {
+			return s[:i], true
+		}
+		count++
+	}
+	return s, false
 }
 
 // importedAtText formats an import time for display, or returns "" when the

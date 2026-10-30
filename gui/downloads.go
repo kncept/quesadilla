@@ -17,23 +17,6 @@ func (this *QGUI) jobsPage() fyne.CanvasObject {
 	return this.jobsScreen.Content()
 }
 
-// AppJobs manages job-related operations for the application.
-type AppJobs struct {
-	jobManager *jobs.JobManager
-}
-
-// startJob starts a job using the job manager.
-func (a *AppJobs) startJob(request jobs.JobRequest, refreshModelMetadata func(modelName string) error) {
-	switch request.Type {
-	case jobs.JobTypeDownload:
-		a.jobManager.StartDownloadJob(request)
-	case jobs.JobTypeRefreshModelMetadata:
-		a.jobManager.StartMetadataRefreshJob(request, func() error {
-			return refreshModelMetadata(request.ModelName)
-		})
-	}
-}
-
 // doRefreshModelMetadata performs the actual metadata refresh.
 func (this *QGUI) doRefreshModelMetadata(modelName string) error {
 	model := this.QApp.LocalModels.GetModel(modelName)
@@ -93,12 +76,7 @@ func (this *QGUI) downloadHuggingFaceVariant(variantFileName string) {
 		return
 	}
 
-	this.jobManager.StartJob(jobs.JobRequest{
-		Type:      jobs.JobTypeDownload,
-		Name:      fmt.Sprintf("Download %s (%s)", modelName, variantFileName),
-		URL:       model.ModelURL,
-		ModelName: modelName,
-	}, func(progress func(current, total int64)) error {
+	this.jobManager.StartJob(fmt.Sprintf("Download %s (%s)", modelName, variantFileName), func(progress func(current, total int64)) error {
 		remote := hfScanner.GetModel(modelID)
 		if remote == nil {
 			return fmt.Errorf("could not find model %s on HuggingFace", modelID)
@@ -146,10 +124,8 @@ func (this *QGUI) refreshModelMetadata() {
 		return
 	}
 
-	this.jobs.startJob(jobs.JobRequest{
-		Type:      jobs.JobTypeRefreshModelMetadata,
+	this.jobManager.StartMetadataRefreshJob(jobs.ModelRefreshParams{
 		Name:      fmt.Sprintf("Refresh metadata %s", modelName),
-		URL:       model.ModelURL,
 		ModelName: modelName,
 		OnComplete: func(err error) {
 			fyne.Do(func() {
@@ -166,5 +142,7 @@ func (this *QGUI) refreshModelMetadata() {
 				}
 			})
 		},
-	}, this.doRefreshModelMetadata)
+	}, func() error {
+		return this.doRefreshModelMetadata(modelName)
+	})
 }

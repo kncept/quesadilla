@@ -43,11 +43,10 @@ func TestJobLifecycle(t *testing.T) {
 	destination := path.Join(t.TempDir(), "file.txt")
 
 	completed := make(chan error, 1)
-	g.jobs.startJob(jobs.JobRequest{
-		Type:         jobs.JobTypeDownload,
-		Name:         "test download",
-		URL:          server.URL + "/file.txt",
-		Destination:  destination,
+	g.jobManager.StartDownloadJob(jobs.DownloadParams{
+		Name:        "test download",
+		URL:         server.URL + "/file.txt",
+		Destination: destination,
 		OnComplete: func(err error) {
 			// the job is still listed while its completion runs
 			if got := len(g.jobManager.ActiveJobs()); got != 1 {
@@ -55,7 +54,7 @@ func TestJobLifecycle(t *testing.T) {
 			}
 			completed <- err
 		},
-	}, func(modelName string) error { return nil })
+	})
 
 	select {
 	case err := <-completed:
@@ -97,13 +96,11 @@ func TestJobListedWhileActive(t *testing.T) {
 	g.jobsPage()
 	destination := path.Join(t.TempDir(), "file.txt")
 
-	g.jobs.startJob(jobs.JobRequest{
-		Type:         jobs.JobTypeDownload,
-		Name:         "listed job",
-		URL:          server.URL + "/file.txt",
-		Destination:  destination,
-		OnComplete: func(err error) {},
-	}, func(modelName string) error { return nil })
+	g.jobManager.StartDownloadJob(jobs.DownloadParams{
+		Name:        "listed job",
+		URL:         server.URL + "/file.txt",
+		Destination: destination,
+	})
 
 	select {
 	case <-started:
@@ -116,11 +113,15 @@ func TestJobListedWhileActive(t *testing.T) {
 	if jobList[0].Name != "listed job" {
 		t.Errorf("job name = %q, want listed job", jobList[0].Name)
 	}
-	if jobList[0].Source != server.URL+"/file.txt" {
-		t.Errorf("job source = %q, want %q", jobList[0].Source, server.URL+"/file.txt")
+	params, ok := jobList[0].Metadata.(jobs.DownloadParams)
+	if !ok {
+		t.Fatalf("job metadata = %T, want jobs.DownloadParams", jobList[0].Metadata)
 	}
-	if jobList[0].Destination != destination {
-		t.Errorf("job destination = %q, want %q", jobList[0].Destination, destination)
+	if params.URL != server.URL+"/file.txt" {
+		t.Errorf("job source = %q, want %q", params.URL, server.URL+"/file.txt")
+	}
+	if params.Destination != destination {
+		t.Errorf("job destination = %q, want %q", params.Destination, destination)
 	}
 
 	close(release)
@@ -203,15 +204,14 @@ func TestJobProgress(t *testing.T) {
 	// Test with Content-Length
 	dest1 := path.Join(t.TempDir(), "with-length.txt")
 	done1 := make(chan struct{})
-	g.jobs.startJob(jobs.JobRequest{
-		Type:         jobs.JobTypeDownload,
-		Name:         "with length",
-		URL:          serverWithLength.URL + "/file.txt",
-		Destination:  dest1,
+	g.jobManager.StartDownloadJob(jobs.DownloadParams{
+		Name:        "with length",
+		URL:         serverWithLength.URL + "/file.txt",
+		Destination: dest1,
 		OnComplete: func(error) {
 			close(done1)
 		},
-	}, func(modelName string) error { return nil })
+	})
 
 	// Wait for job to complete
 	select {
@@ -228,15 +228,14 @@ func TestJobProgress(t *testing.T) {
 	// Test without Content-Length
 	dest2 := path.Join(t.TempDir(), "no-length.txt")
 	done2 := make(chan struct{})
-	g.jobs.startJob(jobs.JobRequest{
-		Type:         jobs.JobTypeDownload,
-		Name:         "no length",
-		URL:          serverNoLength.URL + "/file.txt",
-		Destination:  dest2,
+	g.jobManager.StartDownloadJob(jobs.DownloadParams{
+		Name:        "no length",
+		URL:         serverNoLength.URL + "/file.txt",
+		Destination: dest2,
 		OnComplete: func(error) {
 			close(done2)
 		},
-	}, func(modelName string) error { return nil })
+	})
 
 	select {
 	case <-done2:

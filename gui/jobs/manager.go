@@ -34,23 +34,32 @@ func (this *JobManager) NotifyChange() {
 	}
 }
 
-// AddJob adds a new job and returns it.
-func (this *JobManager) AddJob(jobType JobType, name, source, destination, modelName string) *Job {
+// AddJob adds a new job with the given type-specific metadata and returns
+// it. Returns an error if a job with the same type and name already exists
+// (duplicate).
+func (this *JobManager) AddJob(jobType JobType, name string, metadata any) (*Job, error) {
+	this.mu.RLock()
+	for _, j := range this.jobs {
+		if j.Type == jobType && j.Name == name {
+			this.mu.RUnlock()
+			return nil, fmt.Errorf("duplicate job: type=%s, name=%s", jobType, name)
+		}
+	}
+	this.mu.RUnlock()
+
 	job := &Job{
-		Type:        jobType,
-		Name:        name,
-		Source:      source,
-		Destination: destination,
-		ModelName:   modelName,
-		Started:     time.Now(),
-		Progress:    -1,
+		Type:     jobType,
+		Name:     name,
+		Metadata: metadata,
+		Started:  time.Now(),
+		Progress: -1,
 	}
 	fmt.Printf("Job added: %+v\n", job)
 	this.mu.Lock()
 	this.jobs = append(this.jobs, job)
 	this.mu.Unlock()
 	this.NotifyChange()
-	return job
+	return job, nil
 }
 
 // RemoveJob removes a job from the list.
@@ -80,17 +89,21 @@ func (this *JobManager) ActiveJobs() []Job {
 	return jobs
 }
 
-// StartDownloadJob starts a download job in a goroutine.
-func (this *JobManager) StartDownloadJob(request JobRequest) {
-	job := this.AddJob(request.Type, request.Name, request.URL, request.Destination, request.ModelName)
+// StartDownloadJob starts a file download job in a goroutine.
+func (this *JobManager) StartDownloadJob(params DownloadParams) {
+	job, err := this.AddJob(JobTypeDownload, params.Name, params)
+	if err != nil {
+		fmt.Printf("Failed to add job: %v\n", err)
+		return
+	}
 	go func() {
 		defer this.RemoveJob(job)
 
-		directory, fileName := path.Split(request.Destination)
+		directory, fileName := path.Split(params.Destination)
 		if directory == "" {
 			directory = "."
 		}
-		err := qhttp.DownloadFileWithProgress(request.URL, directory, fileName, func(current, total int64) {
+		err := qhttp.DownloadFileWithProgress(params.URL, directory, fileName, func(current, total int64) {
 			if total > 0 {
 				job.Progress = int((current * 100) / total)
 			} else {
@@ -103,15 +116,20 @@ func (this *JobManager) StartDownloadJob(request JobRequest) {
 		job.Completed = true
 		job.Progress = 100
 		this.NotifyChange()
-		if request.OnComplete != nil {
-			request.OnComplete(err)
+		if params.OnComplete != nil {
+			params.OnComplete(err)
 		}
 	}()
 }
 
-// StartMetadataRefreshJob starts a metadata refresh job in a goroutine.
-func (this *JobManager) StartMetadataRefreshJob(request JobRequest, refreshFunc func() error) {
-	job := this.AddJob(request.Type, request.Name, request.URL, request.Destination, request.ModelName)
+// StartMetadataRefreshJob starts a model metadata refresh job in a
+// goroutine, running the given refresh function.
+func (this *JobManager) StartMetadataRefreshJob(params ModelRefreshParams, refreshFunc func() error) {
+	job, err := this.AddJob(JobTypeRefreshModelMetadata, params.Name, params)
+	if err != nil {
+		fmt.Printf("Failed to add job: %v\n", err)
+		return
+	}
 	go func() {
 		defer this.RemoveJob(job)
 
@@ -120,16 +138,22 @@ func (this *JobManager) StartMetadataRefreshJob(request JobRequest, refreshFunc 
 		job.Completed = true
 		job.Progress = 100
 		this.NotifyChange()
-		if request.OnComplete != nil {
-			request.OnComplete(err)
+		if params.OnComplete != nil {
+			params.OnComplete(err)
 		}
 	}()
 }
 
-// StartJob starts a generic job with a work function that receives a progress callback.
-// The work function should return an error.
-func (this *JobManager) StartJob(request JobRequest, work func(progress func(current, total int64)) error) {
-	job := this.AddJob(request.Type, request.Name, request.URL, request.Destination, request.ModelName)
+// StartJob starts a generic job with a work function that receives a
+// progress callback. The work function should return an error.
+// If a duplicate job is detected, the job is not started and the error is
+// logged.
+func (this *JobManager) StartJob(name string, work func(progress func(current, total int64)) error) {
+	job, err := this.AddJob(JobTypeGeneric, name, GenericJobParams{})
+	if err != nil {
+		fmt.Printf("Failed to add job: %v\n", err)
+		return
+	}
 	go func() {
 		defer this.RemoveJob(job)
 
@@ -146,8 +170,5 @@ func (this *JobManager) StartJob(request JobRequest, work func(progress func(cur
 		job.Completed = true
 		job.Progress = 100
 		this.NotifyChange()
-		if request.OnComplete != nil {
-			request.OnComplete(err)
-		}
 	}()
 }
