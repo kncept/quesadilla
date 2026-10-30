@@ -156,24 +156,16 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p .build/gui
-          # The macOS entry point is in cmd/macos but for other platforms we'd need
-          # platform-specific entry points. For now, build the macOS one on macOS
-          # and a generic one on Linux/Windows.
+          # The macOS entry point is in cmd/macos, Linux in cmd/linux, Windows in cmd/windows
           if [ "${{ matrix.goos }}" = "darwin" ]; then
             go build -o ".build/gui/${{ matrix.artifact-name }}" ./cmd/macos
+          elif [ "${{ matrix.goos }}" = "linux" ]; then
+            go build -o ".build/gui/${{ matrix.artifact-name }}" ./cmd/linux
+          elif [ "${{ matrix.goos }}" = "windows" ]; then
+            go build -o ".build/gui/${{ matrix.artifact-name }}.exe" ./cmd/windows
           else
-            # For Linux/Windows, we need a platform-agnostic entry point
-            # This will fail if cmd/macos is used (it has macOS-specific code)
-            # We'll create a temporary generic main or use a build tag
-            echo "Building generic GUI for ${{ matrix.goos }}..."
-            # Try to build with a generic main if it exists, otherwise skip
-            if [ -f "cmd/gui/main.go" ]; then
-              go build -o ".build/gui/${{ matrix.artifact-name }}" ./cmd/gui
-            else
-              echo "No generic GUI entry point found for ${{ matrix.goos }}. Skipping."
-              # Create a placeholder so artifact upload doesn't fail
-              touch ".build/gui/${{ matrix.artifact-name }}.placeholder"
-            fi
+            echo "No GUI entry point found for ${{ matrix.goos }}. Skipping."
+            touch ".build/gui/${{ matrix.artifact-name }}.placeholder"
           fi
 
       - name: Upload GUI artifact
