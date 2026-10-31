@@ -280,12 +280,118 @@ clean() {
   echo "Clean complete."
 }
 
+# Download act binaries for all platforms
+# Downloads from https://github.com/nektos/act/releases/tag/v0.2.89
+download_act() {
+  local act_dir=".act"
+  local version="v0.2.89"
+  local base_url="https://github.com/nektos/act/releases/download/${version}"
+
+  echo "Downloading act ${version} binaries to ${act_dir}/..."
+  mkdir -p "${act_dir}"
+  cd "${act_dir}"
+
+  # Download all platform binaries
+  echo "Downloading Linux amd64..."
+  curl -L -s -o act_linux_amd64.tar.gz "${base_url}/act_Linux_x86_64.tar.gz"
+  echo "Downloading Linux arm64..."
+  curl -L -s -o act_linux_arm64.tar.gz "${base_url}/act_Linux_arm64.tar.gz"
+  echo "Downloading macOS amd64..."
+  curl -L -s -o act_darwin_amd64.tar.gz "${base_url}/act_Darwin_x86_64.tar.gz"
+  echo "Downloading macOS arm64..."
+  curl -L -s -o act_darwin_arm64.tar.gz "${base_url}/act_Darwin_arm64.tar.gz"
+  echo "Downloading Windows amd64..."
+  curl -L -s -o act_windows_amd64.zip "${base_url}/act_Windows_x86_64.zip"
+
+  # Extract and rename
+  echo "Extracting..."
+  tar -xzf act_linux_amd64.tar.gz && mv act act_linux_amd64
+  tar -xzf act_linux_arm64.tar.gz && mv act act_linux_arm64
+  tar -xzf act_darwin_amd64.tar.gz && mv act act_darwin_amd64
+  tar -xzf act_darwin_arm64.tar.gz && mv act act_darwin_arm64
+  unzip -o act_windows_amd64.zip >/dev/null && mv act.exe act_windows_amd64.exe
+
+  # Set execute permissions
+  chmod +x act_linux_amd64 act_linux_arm64 act_darwin_amd64 act_darwin_arm64 act_windows_amd64.exe
+
+  # Clean up archives and extra files
+  rm -f act_linux_amd64.tar.gz act_linux_arm64.tar.gz act_darwin_amd64.tar.gz act_darwin_arm64.tar.gz act_windows_amd64.zip
+  rm -f LICENSE README.md
+
+  cd ..
+  echo "Downloaded act binaries to ${act_dir}/"
+  ls -la "${act_dir}/"
+}
+
+# Run act (GitHub Actions local runner)
+# Usage: ./run.sh act [args...]
+act() {
+  local act_dir=".act"
+  local os_arch
+  local binary_name
+
+  case "$(uname -s)" in
+    Linux)
+      case "$(uname -m)" in
+        x86_64) os_arch="linux_amd64" ;;
+        aarch64|arm64) os_arch="linux_arm64" ;;
+        *) os_arch="linux_$(uname -m)" ;;
+      esac
+      ;;
+    Darwin)
+      case "$(uname -m)" in
+        x86_64) os_arch="darwin_amd64" ;;
+        arm64) os_arch="darwin_arm64" ;;
+        *) os_arch="darwin_$(uname -m)" ;;
+      esac
+      ;;
+    CYGWIN*|MINGW*|MSYS*)
+      case "$(uname -m)" in
+        x86_64) os_arch="windows_amd64" ;;
+        *) os_arch="windows_$(uname -m)" ;;
+      esac
+      ;;
+    *)
+      echo "Error: Unsupported OS: $(uname -s)" >&2
+      echo "Download act from https://github.com/nektos/act/releases" >&2
+      return 1
+      ;;
+  esac
+
+  if [[ "${os_arch}" == windows_* ]]; then
+    binary_name="act_${os_arch}.exe"
+  else
+    binary_name="act_${os_arch}"
+  fi
+
+  local binary_path="${act_dir}/${binary_name}"
+
+  if [[ ! -f "${binary_path}" ]]; then
+    echo "act binary not found at ${binary_path}, downloading..." >&2
+    (download_act)
+    # Re-check after download
+    if [[ ! -f "${binary_path}" ]]; then
+      echo "Error: Failed to download act binary" >&2
+      return 1
+    fi
+  fi
+
+  if [[ ! -x "${binary_path}" ]]; then
+    chmod +x "${binary_path}"
+  fi
+
+  mkdir -p ./.act/outputs
+  exec "${binary_path}" --artifact-server-path ./.act/outputs "$@"
+}
+
 help() {
   cat <<EOF
 Usage: ./run.sh <command>
 
 Commands:
   help                 Show this help message
+  download_act         Download act binaries for all platforms to .act/
+  act                  Run GitHub Actions locally via act (passes args to act)
   dependencies         Install the native build dependencies for the host and fetch the llama-go/llama.cpp submodules
   dependencies:macos   Install the native build dependencies for macOS (Xcode command line tools)
   dependencies:linux   Install the native build dependencies for Linux (gcc + OpenGL/X11/xkbcommon/Wayland headers)
@@ -330,6 +436,13 @@ case "${1:-}" in
     ;;
   clean)
     (clean)
+    ;;
+  download_act)
+    (download_act)
+    ;;
+  act)
+    shift
+    (act "$@")
     ;;
   help|-h|--help)
     (help)
