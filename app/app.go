@@ -8,7 +8,6 @@ import (
 	"log"
 	"slices"
 	"sync"
-	"time"
 
 	"github.com/kncept/quesadilla/backend"
 	backendDefinitions "github.com/kncept/quesadilla/backend/definitions"
@@ -120,52 +119,6 @@ func (this *QApp) RunningModelRegistry() *running.Registry {
 	return this.registry
 }
 
-// RunningModels returns the models currently running, sorted by name.
 func (this *QApp) RunningModels() []runnerDefinitions.RunningModel {
 	return this.registry.RunningModels()
-}
-
-// Stop asks the named model to quit, if it is running. It reports whether a
-// running model was found. The quit is requested asynchronously; the model
-// leaves the registry when its process actually exits.
-func (this *QApp) Stop(modelName string) bool {
-	for _, m := range this.registry.RunningModels() {
-		if m.ModelName() == modelName {
-			fmt.Printf("Stopping model %s on %s (quit requested)\n", modelName, m.ProviderName())
-			m.SendSigQuit()
-			return true
-		}
-	}
-	return false
-}
-
-// StopAll asks every running model to quit, waiting up to 30 seconds for a
-// graceful stop before killing whatever is still running.
-func (this *QApp) StopAll() {
-	runningModels := this.registry.RunningModels()
-	if len(runningModels) == 0 {
-		return
-	}
-	fmt.Printf("Stopping %d running model(s)\n", len(runningModels))
-	for _, m := range runningModels {
-		go m.SendSigQuit() // do this async, so that we can't hang
-	}
-	sleepTime := 500 * time.Millisecond
-
-	// wait up to 30 seconds for them all to finish
-	endTime := time.Now().UnixMilli() + (30 * time.Second).Milliseconds()
-	for time.Now().UnixMilli() < endTime && len(this.registry.RunningModels()) > 0 {
-		fmt.Printf("Waiting for quit ...\n")
-		time.Sleep(sleepTime)
-	}
-
-	// yeah, just kill them now
-	stillRunning := this.registry.RunningModels()
-	if len(stillRunning) > 0 {
-		fmt.Printf("Killing %d model(s) that did not stop in time\n", len(stillRunning))
-		for _, m := range stillRunning {
-			go m.SendSigKill()
-		}
-	}
-	fmt.Printf("All models stopped")
 }

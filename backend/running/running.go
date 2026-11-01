@@ -4,8 +4,10 @@
 package running
 
 import (
+	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
@@ -63,4 +65,71 @@ func (r *Registry) Names() []string {
 		names[i] = m.ModelName()
 	}
 	return names
+}
+
+// Stop asks the named model to quit, if it is running. It reports whether a
+// running model was found. The quit is requested asynchronously; the model
+// leaves the registry when its process actually exits.
+func (r *Registry) Stop(modelName string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, m := range r.runningModels {
+		if m.ModelName() == modelName {
+			// We found the model; send quit signal and remove from list
+			m.SendSigQuit()
+			r.runningModels = append(r.runningModels[:i], r.runningModels[i+1:]...)
+			r.mu.Unlock()
+			return true
+		}
+	}
+	r.mu.Unlock()
+	return false
+}
+
+// StopAll asks every running model to quit, waiting up to 30 seconds for a
+// graceful stop before killing whatever is still running.
+func (r *Registry) StopAll() {
+	r.mu.Lock()
+	runningModels := make([]runnerDefinitions.RunningModel, len(r.runningModels))
+	copy(runningModels, r.runningModels)
+	r.mu.Unlock()
+
+	if len(runningModels) == 0 {
+		return
+	}
+	fmt.Printf("Stopping %d running model(s)\n", len(runningModels))
+	for _, m := range runningModels {
+		go m.SendSigQuit() // do this async, so that we can't hang
+	}
+	sleepTime := 500 * time.Millisecond
+
+	// wait up to 30 seconds for them all to finish
+	endTime := time.Now().UnixMilli() + (30 * time.Second).Milliseconds()
+	for time.Now().UnixMilli() < endTime && len(r.runningModels) > 0 {
+		fmt.Printf("Waiting for quit ...\n")
+		time.Sleep(sleepTime)
+		// Re-check under lock
+		r.mu.Lock()
+		if len(r.runningModels) == 0 {
+			r.mu.Unlock()
+			break
+		}
+		r.mu.Unlock()
+	}
+
+	// yeah, just kill them now
+	r.mu.Lock()
+	stillRunning := make([]runnerDefinitions.RunningModel, 0, len(r.runningModels))
+	for _, m := range r.runningModels {
+		stillRunning = append(stillRunning, m)
+	}
+	r.mu.Unlock()
+
+	if len(stillRunning) > 0 {
+		fmt.Printf("Killing %d model(s) that did not stop in time\n", len(stillRunning))
+		for _, m := range stillRunning {
+			go m.SendSigKill()
+		}
+	}
+	fmt.Printf("All models stopped")
 }

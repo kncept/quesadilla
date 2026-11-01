@@ -170,7 +170,7 @@ func (this *QGUI) Start() {
 func (this *QGUI) Quit() {
 	this.mu.Lock() // Quit
 
-	this.QApp.StopAll()
+	this.QApp.RunningModelRegistry().StopAll()
 	// this.jobManager.ActiveJobs() // stop all of these as well?
 
 	// close tray and exit app

@@ -232,7 +232,7 @@ func (this *QGUI) startModel(m *definitions.Model) {
 // stopModel asks the named running model to quit, if it is running.
 func (this *QGUI) stopModel(modelName string) {
 	fmt.Printf("stopModel %s\n", modelName)
-	this.QApp.Stop(modelName)
+	this.QApp.RunningModelRegistry().Stop(modelName)
 }
 
 // modelCell returns the display value for one data cell of the model table.
