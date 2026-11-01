@@ -14,14 +14,15 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/postfinance/single"
 
 	qapp "github.com/kncept/quesadilla/app"
+	tray "github.com/kncept/quesadilla/gui/tray"
 	"github.com/kncept/quesadilla/backend/running"
 	"github.com/kncept/quesadilla/gui/jobs"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 	"github.com/kncept/quesadilla/utils/qenv"
 )
 
@@ -134,7 +135,7 @@ func (this *QGUI) Start() {
 	this.app = app.NewWithID("com.github.kncept.quesadilla")
 
 	if trayApp, ok := this.app.(desktop.App); ok {
-		this.setupTray(trayApp)
+		this.tray = tray.SetupTray(trayApp)
 	} else {
 		// no system tray on this platform, fall back to the control suite window
 		this.showMainWindow()
@@ -180,22 +181,10 @@ func (this *QGUI) Quit() {
 	os.Exit(0)
 }
 
-// setupTray installs the lightweight indicator: a tray icon whose menu
-// launches the main control suite and lists the running models.
-func (this *QGUI) setupTray(trayApp desktop.App) {
-	complete := new(sync.WaitGroup)
-	complete.Add(1)
-
-	this.tray = fyne.NewMenu("Quesadilla")
-	this.refreshTrayMenu()
-
-	fyne.Do(func() {
-		// the menu must exist before the icon (the tray item is created by it)
-		trayApp.SetSystemTrayMenu(this.tray)
-		trayApp.SetSystemTrayIcon(theme.ComputerIcon())
-		complete.Done()
-	})
-	complete.Wait()
+// SetupTray installs the lightweight system-tray indicator. Must be called
+// after the Fyne app has been created and the tray app interface is available.
+func (this *QGUI) SetupTray(trayApp desktop.App) {
+	this.tray = tray.SetupTray(trayApp)
 }
 
 // singleInstanceName is the lock file (without extension) that ensures
@@ -239,62 +228,12 @@ func (this *QGUI) RunningModelNames() []string {
 
 // refreshTrayMenu rebuilds the system tray menu from the current state.
 func (this *QGUI) refreshTrayMenu() {
-	if this.tray == nil {
-		return
-	}
-	this.mu.Lock()
-	defer this.mu.Unlock()
-
-	models := this.RunningModelNames()
-
-	items := []*fyne.MenuItem{
-		fyne.NewMenuItem("Open Control Suite", this.showMainWindow),
-		fyne.NewMenuItemSeparator(),
-	}
-
-	if len(models) == 0 {
-		items = append(items, disabledItem("No models running"))
-	} else {
-		items = append(items, disabledItem("Models running:"))
-		for _, name := range models {
-			// the model name opens (or focuses) that model's log window
-			items = append(items, fyne.NewMenuItem("  "+name, func() {
-				if m := runningModelFor(name); m != nil {
-					this.showLogs(m)
-				}
-			}))
-		}
-	}
-
-	items = append(items, fyne.NewMenuItemSeparator())
-	items = append(items, fyne.NewMenuItem("Quit", func() { this.Quit() }))
-
-	if !trayItemsAreEqual(items, this.tray.Items) {
-		fyne.Do(func() {
-			fmt.Printf("Updating system tray\n")
-			this.tray.Items = items
-			// re-triggers the tray driver to rebuild the native menu
-			this.tray.Refresh()
-		})
-	}
-}
-
-func trayItemsAreEqual(items, compare []*fyne.MenuItem) bool {
-	if len(items) != len(compare) {
-		return false
-	}
-	for idx, item := range items {
-		if item.Label != compare[idx].Label {
-			return false
-		}
-	}
-	return true
-}
-
-func disabledItem(label string) *fyne.MenuItem {
-	item := fyne.NewMenuItem(label, nil)
-	item.Disabled = true
-	return item
+	tray.RefreshTrayMenu(this.tray, &this.mu, this.RunningModelNames(),
+		this.showMainWindow,
+		func(name string, model runnerDefinitions.RunningModel) {
+			this.showLogs(model)
+		},
+		this.Quit)
 }
 
 // refreshDynamicPages re-renders the pages whose content changes over time:
