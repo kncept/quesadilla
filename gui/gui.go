@@ -114,19 +114,18 @@ type QGUI struct {
 // Start launches the lightweight system-tray indicator. Blocks until quit.
 // Panics if called more than once.
 func (this *QGUI) Start() {
-	this.mu.Lock()
-	defer this.mu.Unlock()
+	this.mu.Lock() // Start needs slightly different lock handling
 	if this.started {
-		panic("gui: QGUI.Start called more than once")
+		panic("a QGUI instance has already been started")
 	}
 
 	release, ok := acquireInstanceLock(qenv.QDir())
 	if !ok {
-		return
+		panic("a QGUI instance is already running")
 	}
-
 	this.started = true
 	defer release()
+	this.mu.Unlock() // Start
 
 	this.app = app.NewWithID("com.github.kncept.quesadilla")
 
@@ -135,6 +134,10 @@ func (this *QGUI) Start() {
 			this.app,
 			this.showMainWindow,
 			this.QApp.RunningModelRegistry(),
+			func(model runnerDefinitions.RunningModel) {
+				this.showLogs(model)
+			},
+			this.Quit,
 		)
 	} else {
 		// no system tray on this platform, fall back to the control suite window
@@ -151,34 +154,33 @@ func (this *QGUI) Start() {
 			defer ticker.Stop()
 			for range ticker.C {
 				this.refreshDynamicPages()
-				this.refreshTrayMenu()
+				if this.tray != nil {
+					this.tray.Refresh()
+				}
 			}
 			return nil
 		},
 		nil,
 		nil,
 	)
+
 	this.app.Run()
 }
 
 func (this *QGUI) Quit() {
-	fmt.Printf("QGUI.Quit() called\n")
-	this.mu.Lock()
-	defer this.mu.Unlock() // shouldn't every matter (!!)
-	if this.mainWin != nil {
-		this.mainWin.Close()
-		this.mainWin = nil
-	}
+	this.mu.Lock() // Quit
 
-	fmt.Printf("calling QApp.StopAll\n")
 	this.QApp.StopAll()
-	// this.jobManager.ActiveJobs() // stop all of these!!
+	// this.jobManager.ActiveJobs() // stop all of these as well?
 
-	fmt.Printf("calling QApp.Quit\n")
-	// close tray
-	this.app.Quit()
+	// close tray and exit app
+	defer this.app.Quit()
 
-	os.Exit(0)
+	if this.mainWin != nil {
+		defer this.mainWin.Close() // this will acquire a lock, so it's deferred so the lock is free
+	}
+	defer this.mu.Unlock() // Quit - shouldn't every matter (!!)
+
 }
 
 // singleInstanceName is the lock file (without extension) that ensures
@@ -215,15 +217,6 @@ func CreateGui(SysLink SystemAgnosticOperations, qApp *qapp.QApp) *QGUI {
 	}
 }
 
-// refreshTrayMenu rebuilds the system tray menu from the current state.
-func (this *QGUI) refreshTrayMenu() {
-	tray.RefreshTrayMenu(this.tray,
-		func(model runnerDefinitions.RunningModel) {
-			this.showLogs(model)
-		},
-		this.Quit)
-}
-
 // refreshDynamicPages re-renders the pages whose content changes over time:
 // the installed-models table (running status and start/stop buttons) and the
 // Overview's running-models section. Safe to call from any goroutine; widgets
@@ -248,9 +241,9 @@ func (this *QGUI) refreshDynamicPages() {
 // window when it is open, plus a log line either way.
 func (this *QGUI) notifyError(message string) {
 	log.Printf("gui: %s", message)
-	this.mu.Lock()
+	// this.mu.Lock()
 	win := this.mainWin
-	this.mu.Unlock()
+	// this.mu.Unlock()
 	if win != nil {
 		dialog.NewInformation("Error", message, win).Show()
 	}
@@ -258,16 +251,16 @@ func (this *QGUI) notifyError(message string) {
 
 // showMainWindow opens (or focuses) the main control suite window.
 func (this *QGUI) showMainWindow() {
-	this.mu.Lock()
-	defer this.mu.Unlock()
+	this.mu.Lock()         // showMainWindow
+	defer this.mu.Unlock() // showMainWindow
 	if this.mainWin == nil {
 		this.mainWin = this.app.NewWindow("Quesadilla Control Suite")
 		// A closed window is destroyed by the driver and can never be
 		// shown again (Show is a no-op on it), so drop the reference and
 		// create a fresh window the next time the control suite is opened.
 		this.mainWin.SetOnClosed(func() {
-			this.mu.Lock()
-			defer this.mu.Unlock()
+			this.mu.Lock()         // showMainWindow SetOnClosed
+			defer this.mu.Unlock() // showMainWindow SetOnClosed
 			this.mainWin = nil
 		})
 		this.mainWin.SetContent(this.mainContent())

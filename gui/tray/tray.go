@@ -18,7 +18,9 @@ type QAppTray struct {
 	TrayMenu              *fyne.Menu
 	Items                 []*fyne.MenuItem
 	RunningModelsRegistry *running.Registry
+	OnModelSelected       func(runnerDefinitions.RunningModel)
 	OpenControlSuite      func()
+	Quit                  func()
 }
 
 func SupportsTray(app fyne.App) bool {
@@ -32,6 +34,10 @@ func InitializeTray(
 	app fyne.App,
 	OpenControlSuite func(),
 	RunningModelsRegistry *running.Registry,
+
+	OnModelSelected func(runnerDefinitions.RunningModel),
+	Quit func(),
+
 ) *QAppTray {
 	if desktopApp, ok := app.(desktop.App); ok {
 		this := &QAppTray{
@@ -40,6 +46,8 @@ func InitializeTray(
 			Items:                 []*fyne.MenuItem{},
 			OpenControlSuite:      OpenControlSuite,
 			RunningModelsRegistry: RunningModelsRegistry,
+			OnModelSelected:       OnModelSelected,
+			Quit:                  Quit,
 		}
 
 		complete := new(sync.WaitGroup)
@@ -51,7 +59,7 @@ func InitializeTray(
 			complete.Done()
 		})
 		complete.Wait()
-
+		this.Refresh()
 		return this
 	} else {
 		panic("System Tray not supported")
@@ -63,37 +71,17 @@ func (this *QAppTray) Refresh() {
 	if this == nil || this.TrayMenu == nil {
 		return
 	}
-	// RefreshTrayMenu()
-}
-
-// todo: remove
-// RefreshTrayMenu rebuilds the tray menu from the current state.
-// trayMenu is the existing tray menu to update, mu protects concurrent access,
-// runningModels are the current model names, and the callback functions handle
-// user actions (open control suite, model selected, quit).
-func RefreshTrayMenu(
-	tray *QAppTray,
-	onModelSelected func(runnerDefinitions.RunningModel),
-	onQuit func()) {
-
-	if tray == nil {
-		return
-	}
-	trayMenu := tray.TrayMenu
-	if trayMenu == nil {
-		return
-	}
-	tray.mu.Lock()
-	defer tray.mu.Unlock()
+	this.mu.Lock()
+	defer this.mu.Unlock()
 
 	items := []*fyne.MenuItem{
 		fyne.NewMenuItem("Open Control Suite", func() {
-			tray.OpenControlSuite()
+			this.OpenControlSuite()
 		}),
 		fyne.NewMenuItemSeparator(),
 	}
 
-	runningModels := tray.RunningModelsRegistry.RunningModels()
+	runningModels := this.RunningModelsRegistry.RunningModels()
 
 	if len(runningModels) == 0 {
 		items = append(items, disabledItem("No models running"))
@@ -101,22 +89,24 @@ func RefreshTrayMenu(
 		items = append(items, disabledItem("Models running:"))
 		for _, runningModel := range runningModels {
 			// the model name opens (or focuses) that model's log window
-			items = append(items, fyne.NewMenuItem("  "+runningModel.ModelName(), func() {
-				onModelSelected(runningModel)
-			}))
+			items = append(items,
+				fyne.NewMenuItem(
+					"  "+runningModel.ModelName(),
+					func() {
+						this.OnModelSelected(runningModel)
+					}))
 		}
 	}
 
 	items = append(items, fyne.NewMenuItemSeparator())
-	items = append(items, fyne.NewMenuItem("Quit", func() { onQuit() }))
+	items = append(items, fyne.NewMenuItem("Quit", this.Quit))
 
-	tray.Items = items
-
-	if !trayItemsAreEqualItems(trayMenu.Items, items) {
+	if !trayItemsAreEqualItems(this.TrayMenu.Items, items) {
 		fyne.Do(func() {
 			fmt.Printf("Updating system tray\n")
-			trayMenu.Items = items
-			trayMenu.Refresh()
+			this.Items = items
+			this.TrayMenu.Items = items
+			this.TrayMenu.Refresh()
 		})
 	}
 }
