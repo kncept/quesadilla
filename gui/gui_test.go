@@ -15,7 +15,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/kncept/quesadilla/app"
-	"github.com/kncept/quesadilla/backend/running"
+	"github.com/kncept/quesadilla/gui/tray"
 )
 
 func menuLabels(g *QGUI) []string {
@@ -118,7 +118,15 @@ func newTrayGui(t *testing.T) *QGUI {
 	t.Helper()
 	test.NewApp()
 	g := CreateGui(nil, app.New())
-	g.tray = fyne.NewMenu("Quesadilla")
+	// The GUI uses g.QApp.RunningModelRegistry() for running model tracking,
+	// not the tray's registry. Set up the tray with the app's registry so
+	// that refreshTrayMenu() can see the running models.
+	g.tray = &tray.QAppTray{
+		TrayMenu:              fyne.NewMenu("Quesadilla"),
+		Items:                 []*fyne.MenuItem{},
+		RunningModelsRegistry: g.QApp.RunningModelRegistry(),
+		OpenControlSuite:      g.Quit,
+	}
 	return g
 }
 
@@ -236,7 +244,8 @@ func TestTrayMenuNoModelsRunning(t *testing.T) {
 func TestTrayMenuModelsRunning(t *testing.T) {
 	g := newTrayGui(t)
 
-	stop := running.Default().Track(&fakeRunningModel{name: "tiny-llama"})
+	fake := &fakeRunningModel{name: "tiny-llama"}
+	stop := g.QApp.RunningModelRegistry().Track(fake)
 	defer stop()
 	g.refreshTrayMenu()
 
@@ -246,7 +255,8 @@ func TestTrayMenuModelsRunning(t *testing.T) {
 	}
 
 	// a model added later is picked up on the next refresh
-	stop2 := running.Default().Track(&fakeRunningModel{name: "big-llama"})
+	fake2 := &fakeRunningModel{name: "big-llama"}
+	stop2 := g.QApp.RunningModelRegistry().Track(fake2)
 	defer stop2()
 	g.refreshTrayMenu()
 

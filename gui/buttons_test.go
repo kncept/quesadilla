@@ -6,11 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
-
-	"github.com/kncept/quesadilla/backend/running"
 )
-
-// findButtons walks an object tree (containers and widget renderers) and
 // collects every button in it.
 func findButtons(o fyne.CanvasObject, out []*widget.Button) []*widget.Button {
 	switch c := o.(type) {
@@ -91,7 +87,7 @@ func TestRunningModelsTableButtonTap(t *testing.T) {
 	g := CreateGui(nil, qApp)
 
 	fake := &fakeRunningModel{name: "tiny-llama"}
-	stop := running.Default().Track(fake)
+	stop := qApp.RunningModelRegistry().Track(fake)
 	defer stop()
 
 	page := g.overviewPage()

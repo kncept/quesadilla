@@ -9,7 +9,7 @@ import (
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
-	"github.com/kncept/quesadilla/backend/running"
+
 )
 
 // findLabels walks an object tree (containers and widget renderers) and
@@ -71,7 +71,7 @@ func TestRunningModelsTableLogsButton(t *testing.T) {
 	g := CreateGui(nil, qApp)
 
 	fake := &fakeRunningModel{name: "tiny-llama"}
-	stop := running.Default().Track(fake)
+	stop := qApp.RunningModelRegistry().Track(fake)
 	defer stop()
 
 	g.overviewPage()
@@ -340,7 +340,7 @@ func TestTrayMenuModelOpensLogs(t *testing.T) {
 	g.app = test.NewApp()
 
 	fake := &fakeRunningModel{name: "tiny-llama", logs: []string{"line"}}
-	stop := running.Default().Track(fake)
+	stop := g.QApp.RunningModelRegistry().Track(fake)
 	defer stop()
 	g.refreshTrayMenu()
 

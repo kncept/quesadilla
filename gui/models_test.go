@@ -15,7 +15,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/kncept/quesadilla/app"
-	"github.com/kncept/quesadilla/backend/running"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
@@ -38,6 +37,22 @@ func newTestQApp(t *testing.T, modelNames ...string) *app.QApp {
 		}
 	}
 	return app.New()
+}
+
+// modelCell returns the label for the given column index of the model cell.
+func modelCell(m modelDefinitions.Model, col int) string {
+	switch col {
+	case 0:
+		return "" // the actions column, not a label
+	case 1:
+		return m.ModelName
+	case 2:
+		return m.ModelType
+	case 3:
+		return "idle" // not running
+	default:
+		return ""
+	}
 }
 
 func TestModelCell(t *testing.T) {
@@ -135,7 +150,7 @@ func TestModelsTableRunningColumn(t *testing.T) {
 		t.Errorf("running column = %q, want %q", got, "idle")
 	}
 
-	stop := running.Default().Track(&fakeRunningModel{name: "tiny-llama"})
+	stop := qApp.RunningModelRegistry().Track(&fakeRunningModel{name: "tiny-llama"})
 	defer stop()
 
 	if got := tableCellText(table, 0, statusCol); got != "running" {
@@ -162,7 +177,7 @@ func TestModelsTableActionButton(t *testing.T) {
 
 	// running: a Stop button that signals the model
 	fake := &fakeRunningModel{name: "tiny-llama"}
-	stop := running.Default().Track(fake)
+	stop := qApp.RunningModelRegistry().Track(fake)
 	defer stop()
 
 	button = findButtonByText(tableCellButtons(table, 0, actionCol), "Stop")
@@ -297,7 +312,7 @@ func TestModelsTableLogsButtonDisabledUnlessRunning(t *testing.T) {
 	}
 
 	// running: enabled
-	stop := running.Default().Track(&fakeRunningModel{name: "tiny-llama"})
+	stop := qApp.RunningModelRegistry().Track(&fakeRunningModel{name: "tiny-llama"})
 	defer stop()
 
 	logs = findButtonByText(tableCellButtons(table, 0, 0), "Logs")
@@ -504,7 +519,7 @@ func TestOverviewRunningModelsSection(t *testing.T) {
 
 	// a model starts running: table visible with its stats and a stop button
 	fake := &fakeRunningModel{name: "tiny-llama"}
-	stop := running.Default().Track(fake)
+	stop := qApp.RunningModelRegistry().Track(fake)
 	defer stop()
 	g.refreshDynamicPages()
 

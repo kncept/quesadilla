@@ -15,9 +15,10 @@ import (
 type QAppTray struct {
 	mu                    sync.Mutex
 	trayApp               desktop.App
-	trayMenu              *fyne.Menu
-	runningModelsRegistry *running.Registry
-	openControlSuite      func()
+	TrayMenu              *fyne.Menu
+	Items                 []*fyne.MenuItem
+	RunningModelsRegistry *running.Registry
+	OpenControlSuite      func()
 }
 
 func SupportsTray(app fyne.App) bool {
@@ -29,22 +30,23 @@ func SupportsTray(app fyne.App) bool {
 
 func InitializeTray(
 	app fyne.App,
-	openControlSuite func(),
-	runningModelsRegistry *running.Registry,
+	OpenControlSuite func(),
+	RunningModelsRegistry *running.Registry,
 ) *QAppTray {
 	if desktopApp, ok := app.(desktop.App); ok {
 		this := &QAppTray{
 			trayApp:               desktopApp,
-			trayMenu:              fyne.NewMenu("Quesadilla"),
-			openControlSuite:      openControlSuite,
-			runningModelsRegistry: runningModelsRegistry,
+			TrayMenu:              fyne.NewMenu("Quesadilla"),
+			Items:                 []*fyne.MenuItem{},
+			OpenControlSuite:      OpenControlSuite,
+			RunningModelsRegistry: RunningModelsRegistry,
 		}
 
 		complete := new(sync.WaitGroup)
 		complete.Add(1)
 		fyne.Do(func() {
 			// the menu must exist before the icon (the tray item is created by it)
-			this.trayApp.SetSystemTrayMenu(this.trayMenu)
+			this.trayApp.SetSystemTrayMenu(this.TrayMenu)
 			this.trayApp.SetSystemTrayIcon(theme.ComputerIcon())
 			complete.Done()
 		})
@@ -54,12 +56,11 @@ func InitializeTray(
 	} else {
 		panic("System Tray not supported")
 	}
-
 }
 
 // TODO: this should be Object based, not Procedural - this function should manage RefreshTrayMenu
 func (this *QAppTray) Refresh() {
-	if this == nil || this.trayMenu == nil {
+	if this == nil || this.TrayMenu == nil {
 		return
 	}
 	// RefreshTrayMenu()
@@ -78,7 +79,7 @@ func RefreshTrayMenu(
 	if tray == nil {
 		return
 	}
-	trayMenu := tray.trayMenu
+	trayMenu := tray.TrayMenu
 	if trayMenu == nil {
 		return
 	}
@@ -87,12 +88,12 @@ func RefreshTrayMenu(
 
 	items := []*fyne.MenuItem{
 		fyne.NewMenuItem("Open Control Suite", func() {
-			tray.openControlSuite()
+			tray.OpenControlSuite()
 		}),
 		fyne.NewMenuItemSeparator(),
 	}
 
-	runningModels := tray.runningModelsRegistry.RunningModels()
+	runningModels := tray.RunningModelsRegistry.RunningModels()
 
 	if len(runningModels) == 0 {
 		items = append(items, disabledItem("No models running"))
@@ -108,6 +109,8 @@ func RefreshTrayMenu(
 
 	items = append(items, fyne.NewMenuItemSeparator())
 	items = append(items, fyne.NewMenuItem("Quit", func() { onQuit() }))
+
+	tray.Items = items
 
 	if !trayItemsAreEqualItems(trayMenu.Items, items) {
 		fyne.Do(func() {
