@@ -13,14 +13,12 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/postfinance/single"
 
 	qapp "github.com/kncept/quesadilla/app"
-	tray "github.com/kncept/quesadilla/gui/tray"
-	"github.com/kncept/quesadilla/backend/running"
 	"github.com/kncept/quesadilla/gui/jobs"
+	tray "github.com/kncept/quesadilla/gui/tray"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 	"github.com/kncept/quesadilla/utils/qenv"
@@ -40,7 +38,7 @@ type QGUI struct {
 	mu      sync.Mutex
 	started bool
 	app     fyne.App
-	tray    *fyne.Menu
+	tray    *tray.QAppTray
 	mainWin fyne.Window
 
 	// logWindows holds the open log window for each running model, keyed by
@@ -117,25 +115,27 @@ type QGUI struct {
 // Panics if called more than once.
 func (this *QGUI) Start() {
 	this.mu.Lock()
+	defer this.mu.Unlock()
 	if this.started {
-		this.mu.Unlock()
 		panic("gui: QGUI.Start called more than once")
 	}
 
 	release, ok := acquireInstanceLock(qenv.QDir())
 	if !ok {
-		this.mu.Unlock()
 		return
 	}
 
 	this.started = true
-	this.mu.Unlock()
 	defer release()
 
 	this.app = app.NewWithID("com.github.kncept.quesadilla")
 
-	if trayApp, ok := this.app.(desktop.App); ok {
-		this.tray = tray.SetupTray(trayApp)
+	if tray.SupportsTray(this.app) {
+		this.tray = tray.InitializeTray(
+			this.app,
+			this.showMainWindow,
+			this.QApp.RunningModelRegistry(),
+		)
 	} else {
 		// no system tray on this platform, fall back to the control suite window
 		this.showMainWindow()
@@ -164,7 +164,7 @@ func (this *QGUI) Start() {
 func (this *QGUI) Quit() {
 	fmt.Printf("QGUI.Quit() called\n")
 	this.mu.Lock()
-	defer this.mu.Unlock()
+	defer this.mu.Unlock() // shouldn't every matter (!!)
 	if this.mainWin != nil {
 		this.mainWin.Close()
 		this.mainWin = nil
@@ -179,12 +179,6 @@ func (this *QGUI) Quit() {
 	this.app.Quit()
 
 	os.Exit(0)
-}
-
-// SetupTray installs the lightweight system-tray indicator. Must be called
-// after the Fyne app has been created and the tray app interface is available.
-func (this *QGUI) SetupTray(trayApp desktop.App) {
-	this.tray = tray.SetupTray(trayApp)
 }
 
 // singleInstanceName is the lock file (without extension) that ensures
@@ -221,16 +215,10 @@ func CreateGui(SysLink SystemAgnosticOperations, qApp *qapp.QApp) *QGUI {
 	}
 }
 
-// RunningModelNames returns the names of the models currently running.
-func (this *QGUI) RunningModelNames() []string {
-	return running.Default().Names()
-}
-
 // refreshTrayMenu rebuilds the system tray menu from the current state.
 func (this *QGUI) refreshTrayMenu() {
-	tray.RefreshTrayMenu(this.tray, &this.mu, this.RunningModelNames(),
-		this.showMainWindow,
-		func(name string, model runnerDefinitions.RunningModel) {
+	tray.RefreshTrayMenu(this.tray,
+		func(model runnerDefinitions.RunningModel) {
 			this.showLogs(model)
 		},
 		this.Quit)

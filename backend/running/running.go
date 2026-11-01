@@ -20,13 +20,6 @@ func NewRegistry() *Registry {
 	return &Registry{}
 }
 
-var defaultRegistry = NewRegistry()
-
-// Default is the process-wide registry used by the backends and the GUI.
-func Default() *Registry {
-	return defaultRegistry
-}
-
 // Track registers model as running and returns a function that stops
 // tracking it. The returned function is safe to call more than once
 // (eg via defer) and from any goroutine.

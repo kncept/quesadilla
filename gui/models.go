@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"github.com/kncept/quesadilla/backend/running"
 	"github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/model/remoterepository"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
@@ -110,7 +109,7 @@ func (this *QGUI) updateModelCell(m definitions.Model, id widget.TableCellID, ce
 		}
 		cell.Add(this.modelDetailsButton(m))
 	} else {
-		label := widget.NewLabel(modelCell(m, id.Col))
+		label := widget.NewLabel(this.modelCell(m, id.Col))
 		label.Wrapping = fyne.TextWrapOff
 		cell.Add(label)
 	}
@@ -119,7 +118,7 @@ func (this *QGUI) updateModelCell(m definitions.Model, id widget.TableCellID, ce
 
 // modelActionButton builds the start/stop button for a model's table row.
 func (this *QGUI) modelActionButton(m definitions.Model) *widget.Button {
-	if isRunning(m.FullModelName()) {
+	if this.isRunning(m.FullModelName()) {
 		return widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
 			this.stopModel(m.FullModelName())
 		})
@@ -146,11 +145,11 @@ func (this *QGUI) modelDeleteButton(m definitions.Model) *widget.Button {
 // lines to show.
 func (this *QGUI) modelLogsButton(m definitions.Model) *widget.Button {
 	button := widget.NewButtonWithIcon("Logs", theme.FileTextIcon(), func() {
-		if running := runningModelFor(m.FullModelName()); running != nil {
+		if running := this.runningModelFor(m.FullModelName()); running != nil {
 			this.showLogs(running)
 		}
 	})
-	if runningModelFor(m.FullModelName()) == nil {
+	if this.runningModelFor(m.FullModelName()) == nil {
 		button.Disable()
 	}
 	return button
@@ -179,8 +178,8 @@ func (this *QGUI) modelDetailsButton(m definitions.Model) *widget.Button {
 // cancelling leaves it untouched.
 func (this *QGUI) confirmDeleteModel(m definitions.Model) {
 	this.mu.Lock()
+	defer this.mu.Unlock()
 	win := this.mainWin
-	this.mu.Unlock()
 	if win == nil {
 		return
 	}
@@ -207,8 +206,9 @@ func (this *QGUI) deleteModel(modelName string) {
 
 // runningModelFor returns the running model with the given name, or nil when
 // no such model is running.
-func runningModelFor(modelName string) runnerDefinitions.RunningModel {
-	for _, m := range running.Default().RunningModels() {
+func (this *QGUI) runningModelFor(modelName string) runnerDefinitions.RunningModel {
+	runningModelRegistry := this.QApp.RunningModelRegistry()
+	for _, m := range runningModelRegistry.RunningModels() {
 		if m.ModelName() == modelName {
 			return m
 		}
@@ -237,14 +237,14 @@ func (this *QGUI) stopModel(modelName string) {
 
 // modelCell returns the display value for one data cell of the model table.
 // Column 0 holds the row actions, not a label.
-func modelCell(m definitions.Model, col int) string {
+func (this *QGUI) modelCell(m definitions.Model, col int) string {
 	switch col {
 	case 1:
 		return m.FullModelName()
 	case 2:
 		return m.ModelType
 	case 3:
-		if isRunning(m.FullModelName()) {
+		if this.isRunning(m.FullModelName()) {
 			return "running"
 		}
 		return "idle"
@@ -254,8 +254,8 @@ func modelCell(m definitions.Model, col int) string {
 }
 
 // isRunning reports whether a model with the given name is currently running.
-func isRunning(modelName string) bool {
-	return runningModelFor(modelName) != nil
+func (this *QGUI) isRunning(modelName string) bool {
+	return this.runningModelFor(modelName) != nil
 }
 
 // runningModelColumns are the table headers for the Overview's running-models
@@ -267,13 +267,14 @@ var runningModelColumns = []string{"Model", "Backend", "Version", "Uptime", "Log
 // with one row per running model (name, backend, version, uptime and a stop
 // button), or a placeholder label when nothing is running.
 func (this *QGUI) runningModelsContent() fyne.CanvasObject {
+	runningModelRegistry := this.QApp.RunningModelRegistry()
 	table := widget.NewTable(
 		func() (int, int) {
-			return len(running.Default().RunningModels()), len(runningModelColumns)
+			return len(runningModelRegistry.RunningModels()), len(runningModelColumns)
 		},
 		runningModelCellFactory,
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
-			models := running.Default().RunningModels()
+			models := runningModelRegistry.RunningModels()
 			if id.Row < 0 || id.Row >= len(models) {
 				return
 			}
@@ -345,7 +346,8 @@ func runningModelCell(m runnerDefinitions.RunningModel, col int) string {
 // updateRunningModelsVisibility shows the table when models are running, and
 // the placeholder otherwise.
 func (this *QGUI) updateRunningModelsVisibility() {
-	hasRunning := len(running.Default().RunningModels()) > 0
+	runningModelRegistry := this.QApp.RunningModelRegistry()
+	hasRunning := len(runningModelRegistry.RunningModels()) > 0
 	if this.runningModelsTable != nil {
 		if hasRunning {
 			this.runningModelsTable.Show()

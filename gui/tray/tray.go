@@ -8,60 +8,100 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 
-	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 	running "github.com/kncept/quesadilla/backend/running"
+	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
-// SetupTray creates the initial tray menu and registers it with the tray app.
-// Returns the newly created tray menu, which the caller should store and use
-// for subsequent RefreshTrayMenu calls.
-func SetupTray(trayApp desktop.App) *fyne.Menu {
-	complete := new(sync.WaitGroup)
-	complete.Add(1)
-
-	trayMenu := fyne.NewMenu("Quesadilla")
-
-	fyne.Do(func() {
-		// the menu must exist before the icon (the tray item is created by it)
-		trayApp.SetSystemTrayMenu(trayMenu)
-		trayApp.SetSystemTrayIcon(theme.ComputerIcon())
-		complete.Done()
-	})
-	complete.Wait()
-
-	return trayMenu
+type QAppTray struct {
+	mu                    sync.Mutex
+	trayApp               desktop.App
+	trayMenu              *fyne.Menu
+	runningModelsRegistry *running.Registry
+	openControlSuite      func()
 }
 
+func SupportsTray(app fyne.App) bool {
+	if _, ok := app.(desktop.App); ok {
+		return true
+	}
+	return false
+}
+
+func InitializeTray(
+	app fyne.App,
+	openControlSuite func(),
+	runningModelsRegistry *running.Registry,
+) *QAppTray {
+	if desktopApp, ok := app.(desktop.App); ok {
+		this := &QAppTray{
+			trayApp:               desktopApp,
+			trayMenu:              fyne.NewMenu("Quesadilla"),
+			openControlSuite:      openControlSuite,
+			runningModelsRegistry: runningModelsRegistry,
+		}
+
+		complete := new(sync.WaitGroup)
+		complete.Add(1)
+		fyne.Do(func() {
+			// the menu must exist before the icon (the tray item is created by it)
+			this.trayApp.SetSystemTrayMenu(this.trayMenu)
+			this.trayApp.SetSystemTrayIcon(theme.ComputerIcon())
+			complete.Done()
+		})
+		complete.Wait()
+
+		return this
+	} else {
+		panic("System Tray not supported")
+	}
+
+}
+
+// TODO: this should be Object based, not Procedural - this function should manage RefreshTrayMenu
+func (this *QAppTray) Refresh() {
+	if this == nil || this.trayMenu == nil {
+		return
+	}
+	// RefreshTrayMenu()
+}
+
+// todo: remove
 // RefreshTrayMenu rebuilds the tray menu from the current state.
 // trayMenu is the existing tray menu to update, mu protects concurrent access,
 // runningModels are the current model names, and the callback functions handle
 // user actions (open control suite, model selected, quit).
-func RefreshTrayMenu(trayMenu *fyne.Menu, mu *sync.Mutex, runningModels []string,
-	onOpenControlSuite func(),
-	onModelSelected func(string, runnerDefinitions.RunningModel),
+func RefreshTrayMenu(
+	tray *QAppTray,
+	onModelSelected func(runnerDefinitions.RunningModel),
 	onQuit func()) {
 
+	if tray == nil {
+		return
+	}
+	trayMenu := tray.trayMenu
 	if trayMenu == nil {
 		return
 	}
-	mu.Lock()
-	defer mu.Unlock()
+	tray.mu.Lock()
+	defer tray.mu.Unlock()
 
 	items := []*fyne.MenuItem{
 		fyne.NewMenuItem("Open Control Suite", func() {
-			onOpenControlSuite()
+			tray.openControlSuite()
 		}),
 		fyne.NewMenuItemSeparator(),
 	}
+
+	runningModels := tray.runningModelsRegistry.RunningModels()
 
 	if len(runningModels) == 0 {
 		items = append(items, disabledItem("No models running"))
 	} else {
 		items = append(items, disabledItem("Models running:"))
-		for _, name := range runningModels {
+		for _, runningModel := range runningModels {
 			// the model name opens (or focuses) that model's log window
-			items = append(items, fyne.NewMenuItem("  "+name, func() {
-				onModelSelected(name, runningModelFor(name))
+			items = append(items, fyne.NewMenuItem("  "+runningModel.ModelName(), func() {
+				onModelSelected(runningModel)
 			}))
 		}
 	}
@@ -96,15 +136,4 @@ func disabledItem(label string) *fyne.MenuItem {
 	item := fyne.NewMenuItem(label, nil)
 	item.Disabled = true
 	return item
-}
-
-// runningModelFor looks up a running model by name. Returns nil when no such
-// model is running.
-func runningModelFor(name string) runnerDefinitions.RunningModel {
-	for _, m := range running.Default().RunningModels() {
-		if m.ModelName() == name {
-			return m
-		}
-	}
-	return nil
 }

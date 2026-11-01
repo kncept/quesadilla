@@ -46,7 +46,7 @@ func New() *QApp {
 		RemoteModels: remoterepository.NewRemoteRepository(),
 		// the process-wide registry, so the GUI's running status and the
 		// tray menu see the models QApp.Start has launched
-		registry: running.Default(),
+		registry: running.NewRegistry(),
 	}
 }
 
@@ -114,6 +114,10 @@ func (this *QApp) SupportedModelTypes() []string {
 	}
 	slices.Sort(types)
 	return types
+}
+
+func (this *QApp) RunningModelRegistry() *running.Registry {
+	return this.registry
 }
 
 // RunningModels returns the models currently running, sorted by name.
