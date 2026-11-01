@@ -102,9 +102,15 @@ func (this *JobManager) StartJob(jobName string, jobType string, description str
 		return err
 	}
 	this.NotifyChange()
+	started := new(sync.WaitGroup)
+	started.Add(1)
 
 	go func() {
+		started.Done()
 		done := make(chan struct{})
+
+		// seperate progress ticker.
+		// TODO: refactor
 		go func() {
 			ticker := time.NewTicker(progressPollInterval)
 			defer ticker.Stop()
@@ -137,6 +143,8 @@ func (this *JobManager) StartJob(jobName string, jobType string, description str
 			this.RemoveJob(entry)
 		}()
 	}()
+
+	started.Wait()
 	return nil
 }
 

@@ -141,18 +141,27 @@ func (this *QGUI) Start() {
 	}
 
 	// Keep the dynamic pages (running status, uptime) up to date.
-	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			this.refreshDynamicPages()
-		}
-	}()
-
+	this.jobManager.StartJob(
+		"DynamicPages",
+		"GUI",
+		"Keep dynamic pages up to date",
+		func() error {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				this.refreshDynamicPages()
+				this.refreshTrayMenu()
+			}
+			return nil
+		},
+		nil,
+		nil,
+	)
 	this.app.Run()
 }
 
 func (this *QGUI) Quit() {
+	fmt.Printf("QGUI.Quit() called\n")
 	this.mu.Lock()
 	defer this.mu.Unlock()
 	if this.mainWin != nil {
@@ -160,8 +169,11 @@ func (this *QGUI) Quit() {
 		this.mainWin = nil
 	}
 
+	fmt.Printf("calling QApp.StopAll\n")
 	this.QApp.StopAll()
+	// this.jobManager.ActiveJobs() // stop all of these!!
 
+	fmt.Printf("calling QApp.Quit\n")
 	// close tray
 	this.app.Quit()
 
@@ -171,20 +183,19 @@ func (this *QGUI) Quit() {
 // setupTray installs the lightweight indicator: a tray icon whose menu
 // launches the main control suite and lists the running models.
 func (this *QGUI) setupTray(trayApp desktop.App) {
+	complete := new(sync.WaitGroup)
+	complete.Add(1)
+
 	this.tray = fyne.NewMenu("Quesadilla")
 	this.refreshTrayMenu()
-	// the menu must exist before the icon (the tray item is created by it)
-	trayApp.SetSystemTrayMenu(this.tray)
-	trayApp.SetSystemTrayIcon(theme.ComputerIcon())
 
-	// Keep the model status in the tray menu up to date.
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			this.refreshTrayMenu()
-		}
-	}()
+	fyne.Do(func() {
+		// the menu must exist before the icon (the tray item is created by it)
+		trayApp.SetSystemTrayMenu(this.tray)
+		trayApp.SetSystemTrayIcon(theme.ComputerIcon())
+		complete.Done()
+	})
+	complete.Wait()
 }
 
 // singleInstanceName is the lock file (without extension) that ensures
@@ -228,11 +239,11 @@ func (this *QGUI) RunningModelNames() []string {
 
 // refreshTrayMenu rebuilds the system tray menu from the current state.
 func (this *QGUI) refreshTrayMenu() {
-	this.mu.Lock()
-	defer this.mu.Unlock()
 	if this.tray == nil {
 		return
 	}
+	this.mu.Lock()
+	defer this.mu.Unlock()
 
 	models := this.RunningModelNames()
 
@@ -260,7 +271,7 @@ func (this *QGUI) refreshTrayMenu() {
 
 	if !trayItemsAreEqual(items, this.tray.Items) {
 		fyne.Do(func() {
-
+			fmt.Printf("Updating system tray\n")
 			this.tray.Items = items
 			// re-triggers the tray driver to rebuild the native menu
 			this.tray.Refresh()
