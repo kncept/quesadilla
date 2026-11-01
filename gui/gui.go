@@ -164,6 +164,8 @@ func (this *QGUI) Quit() {
 
 	// close tray
 	this.app.Quit()
+
+	os.Exit(0)
 }
 
 // setupTray installs the lightweight indicator: a tray icon whose menu
@@ -256,9 +258,26 @@ func (this *QGUI) refreshTrayMenu() {
 	items = append(items, fyne.NewMenuItemSeparator())
 	items = append(items, fyne.NewMenuItem("Quit", func() { this.Quit() }))
 
-	this.tray.Items = items
-	// re-triggers the tray driver to rebuild the native menu
-	this.tray.Refresh()
+	if !trayItemsAreEqual(items, this.tray.Items) {
+		fyne.Do(func() {
+
+			this.tray.Items = items
+			// re-triggers the tray driver to rebuild the native menu
+			this.tray.Refresh()
+		})
+	}
+}
+
+func trayItemsAreEqual(items, compare []*fyne.MenuItem) bool {
+	if len(items) != len(compare) {
+		return false
+	}
+	for idx, item := range items {
+		if item.Label != compare[idx].Label {
+			return false
+		}
+	}
+	return true
 }
 
 func disabledItem(label string) *fyne.MenuItem {
