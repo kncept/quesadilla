@@ -11,7 +11,7 @@ import (
 	"fyne.io/fyne/v2/test"
 
 	"github.com/kncept/quesadilla/app"
-	"github.com/kncept/quesadilla/gui/jobs"
+	"github.com/kncept/quesadilla/app/jobs"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/utils/qhttp"
 )

@@ -17,7 +17,7 @@ import (
 	"github.com/postfinance/single"
 
 	qapp "github.com/kncept/quesadilla/app"
-	"github.com/kncept/quesadilla/gui/jobs"
+	jobs "github.com/kncept/quesadilla/app/jobs"
 	tray "github.com/kncept/quesadilla/gui/tray"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"

@@ -6,7 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 
-	"github.com/kncept/quesadilla/gui/jobs"
+	"github.com/kncept/quesadilla/app/jobs"
 	"github.com/kncept/quesadilla/model/remoterepository"
 )
 

@@ -10,7 +10,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"github.com/kncept/quesadilla/gui/jobs"
+	"github.com/kncept/quesadilla/app/jobs"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/model/remoterepository"
 )
