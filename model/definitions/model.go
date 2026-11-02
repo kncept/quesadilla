@@ -29,6 +29,8 @@ const QModelFileName = "qmodel.json"
 // variant is a single model file (.gguf or .onnx); for gguf it is typically
 // one quantization of the model.
 //
+// Active indicates whether this variant is the currently active one for chat/vision.
+//
 // For variants whose files are stored in the model's own directory (beside
 // its qmodel.json), FileName is the file's base name and Location is empty.
 // For linked variants (LinkedModel is true) the file lives elsewhere: a path
@@ -46,11 +48,13 @@ type ModelVariant struct {
 	Location          string            `json:"Location,omitempty"`
 	SupportsVision    bool              `json:"SupportsVision,omitempty"`
 	EmbeddedMetadata  map[string]string `json:"EmbeddedMetadata,omitempty"`
+	Active            bool              `json:"Active,omitempty"`
 }
 
 // Model is an installed local model: a family and a name (together it is
 // identified by "family/name"), a type that selects its backend, and the
-// variants (files) that can be run.
+// variants (files) that can be run. ActiveVariantFileName records which
+// variant is currently active for chat/vision, persisting the setting.
 type Model struct { // output to qmodel.json
 	MetadataVersion string
 	ModelFamily     string
@@ -62,6 +66,7 @@ type Model struct { // output to qmodel.json
 	ModelURL        string // URL of the model's page at its source, if known
 	LicenceName     string // eg "apache-2.0"
 	LicenceFile     string // path to the stored licence file, if one was stored
+	ActiveVariantFileName string // the file name of the currently active variant
 }
 
 // RemoteModel is a model a scanner found somewhere outside the local
@@ -86,7 +91,9 @@ type RemoteModel struct {
 // the model is (family, name), where it came from (source), what type it is,
 // the model's page at its source (ModelURL, eg its card on a model hub), the
 // variants that can be run, and its licence, if any. The family and name
-// match the model's directory (<ModelFamily>/<ModelName>).
+// match the model's directory (<ModelFamily>/<ModelName>). An ActiveVariantFileName
+// records which variant is currently active for chat/vision, so the setting
+// persists across app restarts.
 type QModel struct {
 	MetadataVersion string         `json:"MetadataVersion"`
 	ModelFamily     string         `json:"ModelFamily"`
@@ -97,6 +104,7 @@ type QModel struct {
 	Variants        []ModelVariant `json:"Variants"`
 	LicenceName     string         `json:"LicenceName,omitempty"`
 	LicenceFile     string         `json:"LicenceFile,omitempty"`
+	ActiveVariantFileName string      `json:"ActiveVariantFileName,omitempty"`
 }
 
 // ModelScanner finds models installed or hosted elsewhere.

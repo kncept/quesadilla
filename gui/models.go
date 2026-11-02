@@ -1,7 +1,10 @@
 package gui
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -386,6 +389,7 @@ type modelDetailRow struct {
 	label        string
 	kind         string // "model", "download" or "variant"
 	variantIndex int    // only for "variant" rows
+	activate     bool   // whether this variant can be activated (shows Activate button)
 }
 
 // modelDetailsPage renders the Model Details screen: a dropdown to select a
@@ -522,14 +526,73 @@ func (this *QGUI) showModelDetailsContent(modelName string) {
 		this.modelDetailsRefreshButton.Enable()
 	}
 
+	// Sort variants so the active variant and the default (first) variant
+	// appear at the top of the list. We preserve the original ordering for
+	// the repository but reorder the display rows.
+	variants := model.Variants
+	activeIdx := -1
+	defaultIdx := -1
+	for i, v := range variants {
+		if v.Active {
+			activeIdx = i
+			break
+		}
+	}
+	if activeIdx == -1 {
+		// Fall back to the persistently active variant recorded in QModel
+		if model.ActiveVariantFileName != "" {
+			for i, v := range variants {
+				if v.FileName == model.ActiveVariantFileName {
+					activeIdx = i
+					break
+				}
+			}
+		}
+	}
+	// Mark the default (first) variant index before any reordering
+	if len(variants) > 0 {
+		defaultIdx = 0
+	}
+
+	// Build a display order: active first, then default, then the rest in original order
+	displayOrder := make([]int, 0, len(variants))
+	if activeIdx >= 0 && activeIdx != defaultIdx {
+		displayOrder = append(displayOrder, activeIdx)
+	}
+	if defaultIdx >= 0 {
+		found := false
+		for _, idx := range displayOrder {
+			if idx == defaultIdx {
+				found = true
+				break
+			}
+		}
+		if !found {
+			displayOrder = append(displayOrder, defaultIdx)
+		}
+	}
+	for i := range variants {
+		found := false
+		for _, idx := range displayOrder {
+			if idx == i {
+				found = true
+				break
+			}
+		}
+		if !found {
+			displayOrder = append(displayOrder, i)
+		}
+	}
+
 	// Left menu: Model, then Download when the model can fetch more variants,
 	// then one row per installed variant.
 	rows := []modelDetailRow{{label: "Model", kind: "model"}}
 	if isHuggingFaceModel(*model) {
 		rows = append(rows, modelDetailRow{label: "Download", kind: "download"})
 	}
-	for i, v := range model.Variants {
-		rows = append(rows, modelDetailRow{label: v.FileName, kind: "variant", variantIndex: i})
+	for _, idx := range displayOrder {
+		v := variants[idx]
+		rows = append(rows, modelDetailRow{label: v.FileName, kind: "variant", variantIndex: idx, activate: v.Active})
 	}
 	this.modelDetailsRows = rows
 	this.modelDetailsList.Refresh()
@@ -598,8 +661,98 @@ func (this *QGUI) selectModelDetailsRow(id int) {
 		this.loadModelDetailsRemoteVariants()
 		this.showModelDetailsView(this.modelDetailsDownloadView)
 	case "variant":
+		// If this variant row has an activate flag, mark it as active
+		if row.activate {
+			this.activateVariant(model, row.variantIndex)
+		}
 		this.buildModelDetailsVariantView(*model, row.variantIndex)
 		this.showModelDetailsView(this.modelDetailsVariantScroll)
+	}
+}
+
+// activateVariant marks the given variant index of the selected model as the
+// active variant for chat/vision. It updates the model's metadata and persists
+// the change to qmodel.json.
+func (this *QGUI) activateVariant(model *definitions.Model, variantIndex int) {
+	if variantIndex < 0 || variantIndex >= len(model.Variants) {
+		return
+	}
+	v := &model.Variants[variantIndex]
+
+	// If already active, do nothing
+	if v.Active {
+		return
+	}
+
+	// Deactivate any currently active variant
+	for i := range model.Variants {
+		model.Variants[i].Active = false
+	}
+	// Activate the selected variant
+	v.Active = true
+
+	// Persist the active variant file name in the model's QModel
+	model.ActiveVariantFileName = v.FileName
+
+	// Write the updated qmodel.json
+	this.writeModelMetadata(model)
+
+	// Refresh the model details content to reflect the change
+	if this.modelDetailsSelected == model.FullModelName() {
+		this.refreshModelDetailsContent()
+	}
+}
+
+// showModelDetailsView shows one of the right-hand views and hides the others.
+func (this *QGUI) writeModelMetadata(model *definitions.Model) {
+	// Find the model directory from the local repository
+	// We need the model directory path - use the model's ModelDirectory field
+	modelDir := model.ModelDirectory
+	if modelDir == "" {
+		// Try to find it from the local models repository
+		for _, m := range this.QApp.LocalModels.Models() {
+			if m.FullModelName() == model.FullModelName() {
+				modelDir = m.ModelDirectory
+				break
+			}
+		}
+	}
+	if modelDir == "" {
+		return
+	}
+
+	// Read existing qmodel.json
+	qmPath := path.Join(modelDir, definitions.QModelFileName)
+	qmData, err := os.ReadFile(qmPath)
+	if err != nil {
+		this.notifyError(fmt.Sprintf("failed to read qmodel.json: %v", err))
+		return
+	}
+
+	// Parse existing metadata
+	var qm definitions.QModel
+	if err := json.Unmarshal(qmData, &qm); err != nil {
+		this.notifyError(fmt.Sprintf("failed to parse qmodel.json: %v", err))
+		return
+	}
+
+	// Update variants with active status
+	qm.Variants = model.Variants
+
+	// Update the active variant file name
+	if model.ActiveVariantFileName != "" {
+		qm.ActiveVariantFileName = model.ActiveVariantFileName
+	}
+
+	// Write back
+	jsonData, err := json.MarshalIndent(qm, "", " ")
+	if err != nil {
+		this.notifyError(fmt.Sprintf("failed to write qmodel.json: %v", err))
+		return
+	}
+	jsonData = append(jsonData, '\n')
+	if err := os.WriteFile(qmPath, jsonData, 0644); err != nil {
+		this.notifyError(fmt.Sprintf("failed to write qmodel.json: %v", err))
 	}
 }
 
