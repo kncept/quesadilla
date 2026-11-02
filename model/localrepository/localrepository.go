@@ -103,6 +103,59 @@ func (this *LocalRepository) RemoveModel(modelName string) error {
 	return nil
 }
 
+// RemoveVariant removes a single variant file from the named local model.
+// It deletes the variant's file from the filesystem and removes it from
+// the model's qmodel.json. If the model has no more variants after removal,
+// the entire model directory is removed. The repository is rescanned afterwards.
+func (this *LocalRepository) RemoveVariant(modelName string, fileName string) error {
+	m := this.GetModel(modelName)
+	if m == nil {
+		return fmt.Errorf("No such local model: %s", modelName)
+	}
+
+	// Find the variant
+	var variant *definitions.ModelVariant
+	for i := range m.Variants {
+		if m.Variants[i].FileName == fileName {
+			variant = &m.Variants[i]
+			break
+		}
+	}
+	if variant == nil {
+		return fmt.Errorf("variant %s not found in model %s", fileName, modelName)
+	}
+
+	// Delete the variant file from the filesystem
+	variantPath := path.Join(m.ModelDirectory, fileName)
+	if err := os.Remove(variantPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove variant file: %w", err)
+	}
+
+	// Load the QModel, remove the variant, and save
+	qm := loadQModel(m.ModelDirectory)
+	newVariants := make([]definitions.ModelVariant, 0, len(qm.Variants)-1)
+	for _, v := range qm.Variants {
+		if v.FileName != fileName {
+			newVariants = append(newVariants, v)
+		}
+	}
+	qm.Variants = newVariants
+
+	// If no variants left, remove the entire model directory
+	if len(qm.Variants) == 0 {
+		if err := os.RemoveAll(m.ModelDirectory); err != nil {
+			return err
+		}
+	} else {
+		if err := writeQModel(m.ModelDirectory, qm); err != nil {
+			return err
+		}
+	}
+
+	this.scan()
+	return nil
+}
+
 // LinkScannedModel links a model found by a scanner into local storage
 // without moving its files: the model's directory holds only its
 // qmodel.json, with the variants marked linked and pointing at where their

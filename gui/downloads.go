@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/dialog"
 
 	"github.com/kncept/quesadilla/app/jobs"
 	"github.com/kncept/quesadilla/model/remoterepository"
@@ -138,6 +139,41 @@ func (this *QGUI) downloadHuggingFaceVariant(variantFileName string) {
 	if err != nil {
 		this.notifyError(fmt.Sprintf("Could not start download: %v", err))
 	}
+}
+
+// deleteModelDetailsVariant deletes a single variant from the currently
+// selected model in the Model Details view.
+func (this *QGUI) deleteModelDetailsVariant(modelName string, fileName string) {
+	model := this.QApp.LocalModels.GetModel(modelName)
+	if model == nil {
+		this.notifyError("Model not found: " + modelName)
+		return
+	}
+
+	// Show confirmation dialog
+	dialog.ShowConfirm("Delete Variant",
+		fmt.Sprintf("Delete variant %q from %s?\nThis will remove the file from disk.", fileName, modelName),
+		func(confirmed bool) {
+			if !confirmed {
+				return
+			}
+			err := this.QApp.LocalModels.RemoveVariant(modelName, fileName)
+			if err != nil {
+				this.notifyError(fmt.Sprintf("Failed to delete variant: %v", err))
+				return
+			}
+			// Refresh the model details screen
+			if this.modelDetailsSelected == modelName {
+				this.showModelDetailsContent(modelName)
+				if this.modelDetailsList != nil && len(this.modelDetailsRows) > 1 {
+					this.modelDetailsList.Select(1) // the Download row
+				}
+			}
+			if this.modelsTable != nil {
+				this.modelsTable.Refresh()
+			}
+		},
+		this.mainWin)
 }
 
 // refreshModelMetadata starts a job to refresh the metadata of the currently

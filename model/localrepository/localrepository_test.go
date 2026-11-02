@@ -563,6 +563,94 @@ func TestRemoveModel(t *testing.T) {
 	}
 }
 
+// TestRemoveVariant verifies removing a single variant removes its file
+// and updates the model's metadata, and removes the model entirely when
+// the last variant is removed.
+func TestRemoveVariant(t *testing.T) {
+	home := withHome(t)
+	server := servingModelServer(t, "gguf-bytes")
+	defer server.Close()
+
+	repo := NewLocalRepository()
+	// Download a model with two variants
+	if err := repo.DownloadModel(&definitions.RemoteModel{
+		ModelFamily: "org",
+		ModelName:   "a",
+		ModelSource: "ZTest",
+		ModelType:   "gguf",
+		Variants: []definitions.ModelVariant{
+			{FileName: "a-v1.gguf", Location: server.URL + "/a-v1.gguf"},
+			{FileName: "a-v2.gguf", Location: server.URL + "/a-v2.gguf"},
+		},
+	}, nil); err != nil {
+		t.Fatalf("DownloadModel: %v", err)
+	}
+
+	model := repo.GetModel("org/a")
+	if model == nil || len(model.Variants) != 2 {
+		t.Fatalf("expected 2 variants, got %v", model)
+	}
+
+	// Remove the first variant
+	if err := repo.RemoveVariant("org/a", "a-v1.gguf"); err != nil {
+		t.Fatalf("RemoveVariant: %v", err)
+	}
+
+	model = repo.GetModel("org/a")
+	if model == nil {
+		t.Fatal("model should still exist after removing one variant")
+	}
+	if len(model.Variants) != 1 || model.Variants[0].FileName != "a-v2.gguf" {
+		t.Errorf("expected 1 variant (a-v2.gguf), got %v", model.Variants)
+	}
+
+	// Verify the file is gone
+	v1Path := path.Join(home, ".quesadilla", "models", "gguf", "org", "a", "a-v1.gguf")
+	if _, err := os.Stat(v1Path); !os.IsNotExist(err) {
+		t.Error("expected variant file a-v1.gguf to be removed")
+	}
+
+	// Verify the second file still exists
+	v2Path := path.Join(home, ".quesadilla", "models", "gguf", "org", "a", "a-v2.gguf")
+	if _, err := os.Stat(v2Path); err != nil {
+		t.Errorf("expected variant file a-v2.gguf to still exist: %v", err)
+	}
+
+	// Remove the last variant - should remove the entire model
+	if err := repo.RemoveVariant("org/a", "a-v2.gguf"); err != nil {
+		t.Fatalf("RemoveVariant (last): %v", err)
+	}
+
+	if repo.GetModel("org/a") != nil {
+		t.Error("expected the model to be gone after removing the last variant")
+	}
+	modelDir := path.Join(home, ".quesadilla", "models", "gguf", "org", "a")
+	if _, err := os.Stat(modelDir); !os.IsNotExist(err) {
+		t.Error("expected the model's directory to be removed after last variant")
+	}
+
+	// Error removing variant from non-existent model
+	if err := repo.RemoveVariant("org/a", "a-v1.gguf"); err == nil {
+		t.Error("expected error removing variant from non-existent model")
+	}
+
+	// Error removing non-existent variant
+	server2 := servingModelServer(t, "gguf-bytes")
+	defer server2.Close()
+	if err := repo.DownloadModel(&definitions.RemoteModel{
+		ModelFamily: "org",
+		ModelName:   "b",
+		ModelSource: "ZTest",
+		ModelType:   "gguf",
+		Variants:    []definitions.ModelVariant{{FileName: "b.gguf", Location: server2.URL + "/b.gguf"}},
+	}, nil); err != nil {
+		t.Fatalf("DownloadModel: %v", err)
+	}
+	if err := repo.RemoveVariant("org/b", "nonexistent.gguf"); err == nil {
+		t.Error("expected error removing non-existent variant")
+	}
+}
+
 // TestScanMigratesLegacyModelJson verifies a legacy linked model (a directory
 // whose single file is its model.json) is migrated to the current layout: it
 // moves under the "none" family, gains its qmodel.json, and the legacy

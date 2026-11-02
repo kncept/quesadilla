@@ -844,8 +844,9 @@ func (this *QGUI) buildModelDetailsDownloadView() {
 }
 
 // updateModelDetailsDownloadCell fills one cell of the downloadable-variants
-// table: the file name and size, and a download button for variants that are
-// not installed yet (installed variants have no button).
+// table: the file name and size, and action buttons for each variant.
+// For non-installed variants: a Download button.
+// For installed variants: Redownload and Delete buttons.
 func (this *QGUI) updateModelDetailsDownloadCell(variants []definitions.ModelVariant, modelName string, id widget.TableCellID, cell *fyne.Container) {
 	cell.RemoveAll()
 	if id.Row < 0 || id.Row >= len(variants) {
@@ -863,7 +864,18 @@ func (this *QGUI) updateModelDetailsDownloadCell(variants []definitions.ModelVar
 		label.Wrapping = fyne.TextWrapOff
 		cell.Add(label)
 	case 2:
-		if !this.modelDetailsVariantInstalled(modelName, v.FileName) {
+		if this.modelDetailsVariantInstalled(modelName, v.FileName) {
+			// Installed variant: show Redownload and Delete buttons
+			buttonBox := container.NewHBox()
+			buttonBox.Add(widget.NewButtonWithIcon("Redownload", theme.DownloadIcon(), func() {
+				this.downloadHuggingFaceVariant(v.FileName)
+			}))
+			buttonBox.Add(widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), func() {
+				this.deleteModelDetailsVariant(modelName, v.FileName)
+			}))
+			cell.Add(buttonBox)
+		} else {
+			// Not installed: show Download button
 			cell.Add(widget.NewButtonWithIcon("Download", theme.DownloadIcon(), func() {
 				this.downloadHuggingFaceVariant(v.FileName)
 			}))

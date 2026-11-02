@@ -78,11 +78,9 @@ func (r *Registry) Stop(modelName string) bool {
 			// We found the model; send quit signal and remove from list
 			m.SendSigQuit()
 			r.runningModels = append(r.runningModels[:i], r.runningModels[i+1:]...)
-			r.mu.Unlock()
 			return true
 		}
 	}
-	r.mu.Unlock()
 	return false
 }
 
