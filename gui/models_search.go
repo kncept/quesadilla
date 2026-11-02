@@ -448,10 +448,24 @@ func (this *QGUI) showModelSearchOverview() {
 
 // selectModelScanner handles picking a scanner from the list. The filesystem
 // scanner cannot scan until the user supplies a directory, so it shows its
-// configuration form instead; every other scanner runs its scan immediately.
+// configuration form instead. A queryable scanner (HuggingFace) shows its
+// search box but waits for the user to submit a query; every other scanner
+// runs its scan immediately.
 func (this *QGUI) selectModelScanner(scanner modelDefinitions.ModelScanner) {
 	if _, ok := scanner.(*remoterepository.FilesystemScanner); ok {
 		this.showFilesystemSearchForm()
+		return
+	}
+	// Queryable scanners (like HuggingFace) show the search box but don't
+	// run a search until the user clicks Search or presses Enter.
+	if _, ok := scanner.(modelDefinitions.QueryModelScanner); ok {
+		this.searchQueryScanner = scanner
+		this.setSearchQueryBarVisible(true)
+		this.searchOverview.Show()
+		this.searchResultsTable.Hide()
+		if this.searchFilesystemForm != nil {
+			this.searchFilesystemForm.Hide()
+		}
 		return
 	}
 	this.runModelSearch(scanner)
@@ -495,28 +509,36 @@ func (this *QGUI) runModelSearchQuery(scanner modelDefinitions.ModelScanner, que
 		this.searchFilesystemForm.Hide()
 	}
 
-	go func() {
-		var models []modelDefinitions.RemoteModel
-		var err error
-		if query != "" {
-			if queryable, ok := scanner.(modelDefinitions.QueryModelScanner); ok {
-				models, err = queryable.ScanForQuery(query)
+	this.jobManager.StartJob(
+		fmt.Sprintf("Model Scan: %s", scanner.ScannerName()),
+		"ModelScan",
+		fmt.Sprintf("Search for models on %s", scanner.ScannerName()),
+		func() error {
+			var models []modelDefinitions.RemoteModel
+			var err error
+			if query != "" {
+				if queryable, ok := scanner.(modelDefinitions.QueryModelScanner); ok {
+					models, err = queryable.ScanForQuery(query)
+				} else {
+					models, err = scanner.ScanForModels()
+				}
 			} else {
 				models, err = scanner.ScanForModels()
 			}
-		} else {
-			models, err = scanner.ScanForModels()
-		}
-		// the screen is the source of truth for where its results came from,
-		// so stamp the scanner name on every result; the download action
-		// looks the scanner back up by that name
-		for i := range models {
-			models[i].ModelSource = scanner.ScannerName()
-		}
-		fyne.Do(func() {
-			this.finishModelSearch(models, err)
-		})
-	}()
+			// the screen is the source of truth for where its results came from,
+			// so stamp the scanner name on every result; the download action
+			// looks the scanner back up by that name
+			for i := range models {
+				models[i].ModelSource = scanner.ScannerName()
+			}
+			fyne.Do(func() {
+				this.finishModelSearch(models, err)
+			})
+			return err
+		},
+		nil,
+		nil,
+	)
 }
 
 // runHuggingFaceSearch runs the scanner behind the search box with the query

@@ -134,14 +134,10 @@ func (this *JobManager) StartJob(jobName string, jobType string, description str
 		this.mu.Unlock()
 		this.NotifyChange()
 
-		if onComplete == nil {
-			this.RemoveJob(entry)
-			return
-		}
-		go func() {
+		if onComplete != nil {
 			onComplete(err)
-			this.RemoveJob(entry)
-		}()
+		}
+		this.RemoveJob(entry)
 	}()
 
 	started.Wait()
