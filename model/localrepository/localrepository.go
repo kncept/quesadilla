@@ -351,15 +351,25 @@ func (this *LocalRepository) RefreshModelMetadata(modelName string) error {
 			this.models[i].LicenceFile = qm.LicenceFile
 			this.models[i].MetadataVersion = qm.MetadataVersion
 			this.models[i].Variants = qm.Variants
-			this.models[i].ActiveVariantFileName = qm.ActiveVariantFileName
+			// Preserve ActiveVariantFileName from in-memory model (in case it was changed but not persisted)
 			if activeVariant != "" {
 				this.models[i].ActiveVariantFileName = activeVariant
+				qm.ActiveVariantFileName = activeVariant
 			}
 			break
 		}
 	}
 
-	// Re-scan to pick up any filesystem changes
+	// Persist the ActiveVariantFileName to qmodel.json before re-scanning
+	// so it survives the reload
+	if activeVariant != "" {
+		if err := writeQModel(model.ModelDirectory, qm); err != nil {
+			log.Printf("local repository: failed to persist ActiveVariantFileName: %v", err)
+		}
+	}
+
+	// Re-scan to pick up any filesystem changes (new files, etc.)
+	// reconcileVariants will preserve ImportedAt for existing variants
 	this.scan()
 	return nil
 }
