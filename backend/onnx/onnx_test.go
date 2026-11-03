@@ -95,7 +95,7 @@ func fixtureModel() *modelDefinitions.Model {
 // decodes, the inputs can be set, and a run produces the summed output.
 func TestLoadAndRunFixture(t *testing.T) {
 	fm := fixtureModel()
-	model, graph, err := loadOnnxModel(fm.GetDefaultVariantPath())
+	model, graph, err := loadOnnxModel(fm.GetDefaultVariant().GetVariantPath())
 	if err != nil {
 		t.Fatalf("loadOnnxModel: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestLoadAndRunFixture(t *testing.T) {
 func newTestRunningModel(t *testing.T, listener net.Listener) *onnxRunningModel {
 	t.Helper()
 	fm := fixtureModel()
-	model, graph, err := loadOnnxModel(fm.GetDefaultVariantPath())
+	model, graph, err := loadOnnxModel(fm.GetDefaultVariant().GetVariantPath())
 	if err != nil {
 		t.Fatalf("loadOnnxModel: %v", err)
 	}

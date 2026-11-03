@@ -39,6 +39,9 @@ const QModelFileName = "qmodel.json"
 //
 // ImportedAt and FileSize are stamped by the local repository when a variant
 // is imported; for remote (not yet installed) variants they may be zero.
+//
+// ModelDirectory is the directory containing the model's qmodel.json. For
+// non-linked variants, this is used to resolve the variant's file path.
 type ModelVariant struct {
 	FileName          string            `json:"FileName"`
 	Description       string            `json:"Description,omitempty"`
@@ -49,6 +52,7 @@ type ModelVariant struct {
 	SupportsVision    bool              `json:"SupportsVision,omitempty"`
 	EmbeddedMetadata  map[string]string `json:"EmbeddedMetadata,omitempty"`
 	Active            bool              `json:"Active,omitempty"`
+	ModelDirectory    string            `json:"-"` // not persisted, set by the model when returning variants
 }
 
 // Model is an installed local model: a family and a name (together it is
@@ -184,45 +188,39 @@ func (m Model) VariantPath(v ModelVariant) string {
 }
 
 // GetDefaultVariant returns the first variant of the model, or a zero
-// ModelVariant if the model has no variants.
+// ModelVariant if the model has no variants. The returned variant has its
+// ModelDirectory field set to the model's directory for path resolution.
 func (m Model) GetDefaultVariant() ModelVariant {
 	if len(m.Variants) == 0 {
 		return ModelVariant{}
 	}
-	return m.Variants[0]
+	v := m.Variants[0]
+	v.ModelDirectory = m.ModelDirectory
+	return v
 }
 
-// GetDefaultVariantPath returns the resolved path of the model's default
-// variant (the first variant), or an empty string if the model has no variants.
-func (m Model) GetDefaultVariantPath() string {
-	v := m.GetDefaultVariant()
-	if v.FileName == "" {
-		return ""
+// GetVariantPath returns the resolved path of this variant: for linked
+// variants, where they point (a path elsewhere on the filesystem, or a URL);
+// otherwise the file in the model's directory (ModelDirectory must be set).
+func (v ModelVariant) GetVariantPath() string {
+	if v.LinkedModel {
+		return v.Location
 	}
-	return m.VariantPath(v)
+	return path.Join(v.ModelDirectory, v.FileName)
 }
 
 // GetDefaultVisionVariant returns the first vision-capable variant of the
 // model, or a zero ModelVariant if the model has no vision-capable variant.
 // For gguf models this is typically the model's mmproj (multimodal
 // projector) file, which can be passed to llama-server as --mmproj alongside
-// a text-only variant of the model.
+// a text-only variant of the model. The returned variant has its
+// ModelDirectory field set to the model's directory for path resolution.
 func (m Model) GetDefaultVisionVariant() ModelVariant {
 	for _, v := range m.Variants {
 		if v.SupportsVision {
+			v.ModelDirectory = m.ModelDirectory
 			return v
 		}
 	}
 	return ModelVariant{}
-}
-
-// GetDefaultVisionVariantPath returns the resolved path of the model's default
-// vision-capable variant (the first vision-capable variant), or an empty
-// string if the model has no vision-capable variant.
-func (m Model) GetDefaultVisionVariantPath() string {
-	v := m.GetDefaultVisionVariant()
-	if v.FileName == "" {
-		return ""
-	}
-	return m.VariantPath(v)
 }

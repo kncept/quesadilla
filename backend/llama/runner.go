@@ -28,7 +28,7 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	logs := runnerDefinitions.NewLogBuffer(runnerDefinitions.DefaultMaxLogLines)
 
 	modelVariant := m.GetDefaultVariant()
-	variantPath := m.VariantPath(modelVariant)
+	variantPath := modelVariant.GetVariantPath()
 
 	args := []string{
 		"", // why do we need this to have and blank (or llama-server)??
@@ -39,12 +39,12 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 
 	// Check if we should add mmproj for multimodal support
 	if modelVariant.SupportsVision {
-		mmprojPath := m.VariantPath(modelVariant)
+		mmprojPath := modelVariant.GetVariantPath()
 		args = append(args, "--mmproj", mmprojPath)
 	} else if visionVariant := m.GetDefaultVisionVariant(); visionVariant.FileName != "" {
 		// The default variant isn't vision-capable, but the model has a
 		// vision-capable variant: use it as the multimodal projector.
-		mmprojPath := m.VariantPath(visionVariant)
+		mmprojPath := visionVariant.GetVariantPath()
 		args = append(args, "--mmproj", mmprojPath)
 	}
 

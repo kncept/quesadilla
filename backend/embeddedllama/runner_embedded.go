@@ -53,7 +53,7 @@ func startEmbeddedLlamaServer(m *modelDefinitions.Model) (runnerDefinitions.Runn
 	logger.Printf("starting %s (runtime %s)", m.FullModelName(), builtInVersion)
 
 	defaultVariant := m.GetDefaultVariant()
-	variantPath := m.VariantPath(defaultVariant)
+	variantPath := defaultVariant.GetVariantPath()
 	logger.Printf("loading model %s", variantPath)
 
 	// llama-go offloads every layer to the GPU when one is available and

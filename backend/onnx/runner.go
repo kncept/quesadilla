@@ -59,7 +59,7 @@ func startOnnxServer(m *modelDefinitions.Model) (runnerDefinitions.RunningModel,
 	logger.Printf("starting %s (runtime %s)", m.FullModelName(), builtInVersion)
 
 	defaultVariant := m.GetDefaultVariant()
-	variantPath := m.VariantPath(defaultVariant)
+	variantPath := defaultVariant.GetVariantPath()
 	logger.Printf("loading model %s", variantPath)
 
 	model, graph, err := loadOnnxModel(variantPath)

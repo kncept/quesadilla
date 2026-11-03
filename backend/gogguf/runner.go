@@ -40,7 +40,7 @@ func startGoggufServer(m *modelDefinitions.Model) (runnerDefinitions.RunningMode
 	logger.Printf("starting %s (runtime %s)", m.FullModelName(), builtInVersion)
 
 	defaultVariant := m.GetDefaultVariant()
-	variantPath := m.VariantPath(defaultVariant)
+	variantPath := defaultVariant.GetVariantPath()
 	logger.Printf("loading model %s", variantPath)
 
 	// LoadMapped reads the weights through an mmap (zero-copy); this is the
