@@ -32,7 +32,7 @@ func (this *QGUI) modelsPage() fyne.CanvasObject {
 	this.modelsRefreshAllButton = widget.NewButtonWithIcon("Refresh All Metadata", theme.ViewRefreshIcon(), func() {
 		this.refreshAllMetadata()
 	})
-	this.modelsRefreshAllButton.Disable() // Enable when there are HuggingFace models
+	this.modelsRefreshAllButton.Disable() // Enable when there are any models
 
 	header := container.NewVBox(
 		headingLabel("Models"),
@@ -83,20 +83,13 @@ func (this *QGUI) newModelsTable() *widget.Table {
 }
 
 // updateRefreshAllButtonState enables the "Refresh All Metadata" button when
-// there are HuggingFace models installed.
+// there are any models installed.
 func (this *QGUI) updateRefreshAllButtonState() {
 	if this.modelsRefreshAllButton == nil {
 		return
 	}
 	models := this.QApp.LocalModels.Models()
-	hasHF := false
-	for _, m := range models {
-		if isHuggingFaceModel(m) {
-			hasHF = true
-			break
-		}
-	}
-	if hasHF {
+	if len(models) > 0 {
 		this.modelsRefreshAllButton.Enable()
 	} else {
 		this.modelsRefreshAllButton.Disable()

@@ -314,6 +314,56 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 	return nil
 }
 
+// RefreshModelMetadata refreshes a single model's metadata from its source.
+// For HuggingFace models, this fetches from remote (use UpdateModelMetadata).
+// For Filesystem and LocalAI models, this re-reads the local qmodel.json.
+func (this *LocalRepository) RefreshModelMetadata(modelName string) error {
+	model := this.GetModel(modelName)
+	if model == nil {
+		return fmt.Errorf("model not found: %s", modelName)
+	}
+
+	// For HuggingFace models, we can't refresh from remote without a scanner
+	// The caller should use UpdateModelMetadata with a RemoteModel
+	if model.ModelSource == "HuggingFace" {
+		return fmt.Errorf("use UpdateModelMetadata for HuggingFace models")
+	}
+
+	// For other models (Filesystem, LocalAI, etc.), re-read qmodel.json from disk
+	qm := loadQModel(model.ModelDirectory)
+	if qm.ModelName == "" {
+		return fmt.Errorf("no qmodel.json found for %s", modelName)
+	}
+
+	// Preserve the active variant file name
+	activeVariant := model.ActiveVariantFileName
+
+	// Update the model in place with fresh metadata from qmodel.json
+	for i := range this.models {
+		if this.models[i].FullModelName() == modelName {
+			// Update fields from qmodel.json
+			this.models[i].ModelFamily = qm.ModelFamily
+			this.models[i].ModelName = qm.ModelName
+			this.models[i].ModelSource = qm.ModelSource
+			this.models[i].ModelType = qm.ModelType
+			this.models[i].ModelURL = qm.ModelURL
+			this.models[i].LicenceName = qm.LicenceName
+			this.models[i].LicenceFile = qm.LicenceFile
+			this.models[i].MetadataVersion = qm.MetadataVersion
+			this.models[i].Variants = qm.Variants
+			this.models[i].ActiveVariantFileName = qm.ActiveVariantFileName
+			if activeVariant != "" {
+				this.models[i].ActiveVariantFileName = activeVariant
+			}
+			break
+		}
+	}
+
+	// Re-scan to pick up any filesystem changes
+	this.scan()
+	return nil
+}
+
 // UpdateModelMetadata updates the local model's metadata from the remote model,
 // without downloading any variant files. It refreshes fields like description,
 // license, variants list, etc., then rescans the repository.

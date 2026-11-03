@@ -9,7 +9,6 @@ import (
 	"fyne.io/fyne/v2/dialog"
 
 	"github.com/kncept/quesadilla/app/jobs"
-	"github.com/kncept/quesadilla/model/definitions"
 	"github.com/kncept/quesadilla/model/remoterepository"
 )
 
@@ -53,25 +52,29 @@ func (this *QGUI) doRefreshModelMetadata(modelName string) error {
 		return fmt.Errorf("model not found: %s", modelName)
 	}
 
-	// Only HuggingFace models can have their metadata refreshed from remote
-	if !isHuggingFaceModel(*model) {
-		return fmt.Errorf("metadata refresh is only available for HuggingFace models")
+	var err error
+
+	// For HuggingFace models, refresh from remote
+	if isHuggingFaceModel(*model) {
+		modelID := huggingFaceModelID(*model)
+		scanner := this.QApp.RemoteModels.GetScanner("HuggingFace")
+		hfScanner, ok := scanner.(*remoterepository.HuggingFaceScanner)
+		if !ok {
+			return fmt.Errorf("HuggingFace scanner not available")
+		}
+
+		remote := hfScanner.GetModel(modelID)
+		if remote == nil {
+			return fmt.Errorf("could not find model %s on HuggingFace", modelID)
+		}
+
+		// Update the local model with fresh metadata from remote
+		err = this.QApp.LocalModels.UpdateModelMetadata(remote)
+	} else {
+		// For other models (Filesystem, LocalAI, etc.), re-read from local qmodel.json
+		err = this.QApp.LocalModels.RefreshModelMetadata(modelName)
 	}
 
-	modelID := huggingFaceModelID(*model)
-	scanner := this.QApp.RemoteModels.GetScanner("HuggingFace")
-	hfScanner, ok := scanner.(*remoterepository.HuggingFaceScanner)
-	if !ok {
-		return fmt.Errorf("HuggingFace scanner not available")
-	}
-
-	remote := hfScanner.GetModel(modelID)
-	if remote == nil {
-		return fmt.Errorf("could not find model %s on HuggingFace", modelID)
-	}
-
-	// Update the local model with fresh metadata from remote
-	err := this.QApp.LocalModels.UpdateModelMetadata(remote)
 	if err != nil {
 		return err
 	}
@@ -230,25 +233,12 @@ func (this *QGUI) refreshModelMetadata() {
 	}
 }
 
-// refreshAllMetadata starts a job to refresh metadata for all HuggingFace models
+// refreshAllMetadata starts a job to refresh metadata for ALL models
 // one at a time, waiting for each to complete before starting the next.
 func (this *QGUI) refreshAllMetadata() {
 	models := this.QApp.LocalModels.Models()
 	if len(models) == 0 {
 		this.notifyError("No models installed")
-		return
-	}
-
-	// Filter to only HuggingFace models
-	var hfModels []definitions.Model
-	for _, m := range models {
-		if isHuggingFaceModel(m) {
-			hfModels = append(hfModels, m)
-		}
-	}
-
-	if len(hfModels) == 0 {
-		this.notifyError("No HuggingFace models installed - metadata refresh only available for HuggingFace models")
 		return
 	}
 
@@ -258,11 +248,11 @@ func (this *QGUI) refreshAllMetadata() {
 	}
 
 	err := this.jobManager.StartJob(
-		fmt.Sprintf("Refresh All Metadata (%d models)", len(hfModels)),
+		fmt.Sprintf("Refresh All Metadata (%d models)", len(models)),
 		jobs.JobTypeGeneric,
-		fmt.Sprintf("Refresh metadata for %d HuggingFace models", len(hfModels)),
+		fmt.Sprintf("Refresh metadata for %d models", len(models)),
 		func() error {
-			for _, model := range hfModels {
+			for _, model := range models {
 				// Update parent job progress
 				this.jobManager.NotifyChange()
 
