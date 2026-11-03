@@ -296,6 +296,7 @@ func (this *LocalRepository) installVariants(scannedModel *definitions.RemoteMod
 			if err == nil && ggufMeta != nil && ggufMeta.Raw != nil {
 				variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
 				variant.SupportsVision = ggufMeta.HasVision
+				variant.SupportsChat = ggufMeta.HasChat
 			}
 		}
 		upsertVariant(&qm, variant)
@@ -383,6 +384,7 @@ func (this *LocalRepository) UpdateModelMetadata(scannedModel *definitions.Remot
 			}
 			qm.Variants[i].EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
 			qm.Variants[i].SupportsVision = ggufMeta.HasVision
+			qm.Variants[i].SupportsChat = ggufMeta.HasChat
 
 		}
 	}
@@ -741,6 +743,7 @@ func loadOrMigrateQModel(dir, family, name string, ext string) (definitions.QMod
 				if err == nil && ggufMeta != nil && ggufMeta.Raw != nil {
 					variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
 					variant.SupportsVision = ggufMeta.HasVision
+					variant.SupportsChat = ggufMeta.HasChat
 				}
 			}
 			qm.Variants = append(qm.Variants, variant)
@@ -787,6 +790,7 @@ func reconcileVariants(qm *definitions.QModel, dir string, ext string) {
 				if err == nil && ggufMeta != nil && ggufMeta.Raw != nil {
 					variant.EmbeddedMetadata = ggufMeta.StringifiedRawMetadata()
 					variant.SupportsVision = ggufMeta.HasVision
+					variant.SupportsChat = ggufMeta.HasChat
 				}
 			}
 			qm.Variants = append(qm.Variants, variant)

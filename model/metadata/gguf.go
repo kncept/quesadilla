@@ -26,6 +26,10 @@ type GGUFMetadata struct {
 	// HasVision indicates if the model has vision/multimodal capabilities
 	HasVision bool
 
+	// HasChat indicates if the model supports chat/instruction following
+	// (i.e., it's a language model, not an embedding model or mmproj)
+	HasChat bool
+
 	// MMProjPath is the path to the multimodal projector file (mmproj), if specified in metadata or found
 	MMProjPath string
 
@@ -60,6 +64,9 @@ func ReadGGUFMetadata(filePath string) (*GGUFMetadata, error) {
 
 	// Check for vision/multimodal capabilities
 	metadata.detectVisionCapabilities()
+
+	// Check for chat/instruction-following capabilities
+	metadata.detectChatCapabilities()
 
 	// Check for mmproj path in metadata
 	if mmproj, err := metadata.getString("llama.mmproj"); err == nil {
@@ -149,6 +156,95 @@ func (this *GGUFMetadata) detectVisionCapabilities() {
 			return
 		}
 	}
+}
+
+// detectChatCapabilities checks if the model supports chat/instruction following
+// based on its architecture. Models that are embedding-only, rerankers, or
+// multimodal projectors (mmproj) do not support chat.
+func (this *GGUFMetadata) detectChatCapabilities() {
+	// Known embedding-only architectures (do not support chat)
+	embeddingArchs := map[string]bool{
+		"bert":               true,
+		"modern_bert":        true,
+		"nomic_bert":         true,
+		"nomic_bert_moe":     true,
+		"neo_bert":           true,
+		"jina_bert_v2":       true,
+		"jina_bert_v3":       true,
+		"eurobert":           true,
+		"gemma_embedding":    true,
+		"gemma_embedding2":   true,
+		"t5encoder":          true,
+		"e5":                 true,
+		"bge":                true,
+		"gte":                true,
+		"jina_embedding":     true,
+		"jina_embedding_v2":  true,
+		"jina_embedding_v3":  true,
+		"bge_m3":             true,
+		"uv":                 true,
+		"nomic_embed":        true,
+		"nomic_embed_v1":     true,
+		"nomic_embed_v1_5":   true,
+		"all_minilm":         true,
+		"all_mpnet":          true,
+		"multilingual_e5":    true,
+		"bge_multilingual":   true,
+		"gte_multilingual":   true,
+		"jina_multilingual":  true,
+	}
+
+	arch := this.Architecture
+	if embeddingArchs[arch] {
+		this.HasChat = false
+		return
+	}
+
+	// Check for embedding indicators in architecture name
+	archLower := strings.ToLower(arch)
+	embeddingIndicators := []string{
+		"embedding",
+		"embed",
+		"encoder_only",
+		"reranker",
+		"rerank",
+	}
+	for _, indicator := range embeddingIndicators {
+		if strings.Contains(archLower, indicator) {
+			this.HasChat = false
+			return
+		}
+	}
+
+	// Check for mmproj (multimodal projector) - not a chat model
+	if archLower == "mmproj" || strings.Contains(archLower, "mmproj") {
+		this.HasChat = false
+		return
+	}
+
+	// Check for vision encoder architectures (clip, siglip) - not chat models
+	if strings.Contains(archLower, "clip") || strings.Contains(archLower, "siglip") {
+		this.HasChat = false
+		return
+	}
+
+	// Also check for embedding-related keys in metadata
+	embeddingKeys := []string{
+		"general.embedding",
+		"general.embeddings",
+		"bert.embeddings",
+		"embedding.model",
+		"embeddings",
+	}
+	for _, key := range embeddingKeys {
+		if _, ok := this.Raw[key]; ok {
+			this.HasChat = false
+			return
+		}
+	}
+
+	// Default to true for all other architectures (standard language models)
+	this.HasChat = true
 }
 
 // findMMProjFile searches for an mmproj file in the model directory

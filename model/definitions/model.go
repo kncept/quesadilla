@@ -50,6 +50,7 @@ type ModelVariant struct {
 	LinkedModel       bool              `json:"LinkedModel"`
 	Location          string            `json:"Location,omitempty"`
 	SupportsVision    bool              `json:"SupportsVision,omitempty"`
+	SupportsChat      bool              `json:"SupportsChat,omitempty"`
 	EmbeddedMetadata  map[string]string `json:"EmbeddedMetadata,omitempty"`
 	Active            bool              `json:"Active,omitempty"`
 	ModelDirectory    string            `json:"-"` // not persisted, set by the model when returning variants
