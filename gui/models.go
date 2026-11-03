@@ -29,9 +29,15 @@ var modelColumns = []string{"Actions", "Name", "Type", "Status"}
 // a row per model. The table reads from the repository on refresh, so it
 // always reflects the current set (eg after a link or remove).
 func (this *QGUI) modelsPage() fyne.CanvasObject {
+	this.modelsRefreshAllButton = widget.NewButtonWithIcon("Refresh All Metadata", theme.ViewRefreshIcon(), func() {
+		this.refreshAllMetadata()
+	})
+	this.modelsRefreshAllButton.Disable() // Enable when there are HuggingFace models
+
 	header := container.NewVBox(
 		headingLabel("Models"),
 		wrappedLabel("Installed models, including config and running stats."),
+		container.NewHBox(this.modelsRefreshAllButton),
 		widget.NewSeparator(),
 	)
 	return container.NewPadded(container.NewBorder(header, nil, nil, nil, this.newModelsTable()))
@@ -72,7 +78,29 @@ func (this *QGUI) newModelsTable() *widget.Table {
 	table.SetColumnWidth(3, 90)  // Status
 
 	this.modelsTable = table
+	this.updateRefreshAllButtonState()
 	return table
+}
+
+// updateRefreshAllButtonState enables the "Refresh All Metadata" button when
+// there are HuggingFace models installed.
+func (this *QGUI) updateRefreshAllButtonState() {
+	if this.modelsRefreshAllButton == nil {
+		return
+	}
+	models := this.QApp.LocalModels.Models()
+	hasHF := false
+	for _, m := range models {
+		if isHuggingFaceModel(m) {
+			hasHF = true
+			break
+		}
+	}
+	if hasHF {
+		this.modelsRefreshAllButton.Enable()
+	} else {
+		this.modelsRefreshAllButton.Disable()
+	}
 }
 
 // modelsCellFactory builds a cell of the installed-models table. The cell
@@ -204,6 +232,7 @@ func (this *QGUI) deleteModel(modelName string) {
 	if this.modelsTable != nil {
 		this.modelsTable.Refresh()
 	}
+	this.updateRefreshAllButtonState()
 	this.refreshModelDetailsContent()
 }
 

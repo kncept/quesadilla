@@ -73,6 +73,7 @@ type QGUI struct {
 	modelDetailsRemoteLoaded   bool
 	modelDetailsRemoteLoading  bool
 	modelDetailsRefreshButton  *widget.Button
+	modelsRefreshAllButton     *widget.Button
 
 	// Job management
 	jobManager *jobs.JobManager
