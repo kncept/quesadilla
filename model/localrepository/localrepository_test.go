@@ -30,6 +30,16 @@ func servingModelServer(t *testing.T, contents string) *httptest.Server {
 	}))
 }
 
+// defaultVariantPath returns the path of the model's default text variant.
+func defaultVariantPath(t *testing.T, m *definitions.Model) string {
+	t.Helper()
+	v, err := m.GetDefaultVariant()
+	if err != nil {
+		t.Fatalf("GetDefaultVariant: %v", err)
+	}
+	return v.GetVariantPath()
+}
+
 // readQModel reads and parses a model directory's qmodel.json.
 func readQModel(t *testing.T, modelDir string) definitions.QModel {
 	t.Helper()
@@ -73,8 +83,8 @@ func TestDownloadModelFromURL(t *testing.T) {
 	}
 	wantDir := path.Join(home, ".quesadilla", "models", "gguf", "org", "a")
 	wantFile := path.Join(wantDir, "a.gguf")
-	if m.GetDefaultVariant().GetVariantPath() != wantFile {
-		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want %q", m.GetDefaultVariant().GetVariantPath(), wantFile)
+	if defaultVariantPath(t, m) != wantFile {
+		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want %q", defaultVariantPath(t, m), wantFile)
 	}
 	data, err := os.ReadFile(wantFile)
 	if err != nil {
@@ -194,7 +204,7 @@ func TestDownloadModelRedownload(t *testing.T) {
 	if m == nil {
 		t.Fatal("expected the model to be listed after the re-download")
 	}
-	defaultVariantPath := m.GetDefaultVariant().GetVariantPath()
+	defaultVariantPath := defaultVariantPath(t, m)
 	data, err := os.ReadFile(defaultVariantPath)
 	if err != nil {
 		t.Fatalf("reading the re-downloaded file: %v", err)
@@ -254,7 +264,7 @@ func TestDownloadModelFromLocalPath(t *testing.T) {
 	if m == nil {
 		t.Fatal("expected the copied model to be listed")
 	}
-	defaultVariantPath := m.GetDefaultVariant().GetVariantPath()
+	defaultVariantPath := defaultVariantPath(t, m)
 	data, err := os.ReadFile(defaultVariantPath)
 	if err != nil {
 		t.Fatalf("reading the copied file: %v", err)
@@ -489,8 +499,8 @@ func TestLinkScannedModel(t *testing.T) {
 	if m == nil {
 		t.Fatal("expected the linked model to be listed")
 	}
-	if m.GetDefaultVariant().GetVariantPath() != srcFile {
-		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want the source file %q", m.GetDefaultVariant().GetVariantPath(), srcFile)
+	if defaultVariantPath(t, m) != srcFile {
+		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want the source file %q", defaultVariantPath(t, m), srcFile)
 	}
 	if len(m.Variants) != 1 || !m.Variants[0].LinkedModel {
 		t.Errorf("expected a single linked variant, got %+v", m.Variants)
@@ -681,8 +691,8 @@ func TestScanMigratesLegacyModelJson(t *testing.T) {
 	if m == nil {
 		t.Fatal("expected the migrated model to be listed")
 	}
-	if m.GetDefaultVariant().GetVariantPath() != srcFile {
-		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want the source file %q", m.GetDefaultVariant().GetVariantPath(), srcFile)
+	if defaultVariantPath(t, m) != srcFile {
+		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want the source file %q", defaultVariantPath(t, m), srcFile)
 	}
 	if len(m.Variants) != 1 || !m.Variants[0].LinkedModel {
 		t.Errorf("expected a single linked variant, got %+v", m.Variants)
@@ -855,5 +865,162 @@ func TestGetModelByNameAndFullName(t *testing.T) {
 	}
 	if m := repo.GetModel("none/b"); m == nil {
 		t.Error("expected the family-less model to be found by its full name")
+	}
+}
+
+// TestScanLoadsSelectedVariants verifies the preferred text and vision
+// variants stored in qmodel.json are loaded into the in-memory model.
+func TestScanLoadsSelectedVariants(t *testing.T) {
+	home := withHome(t)
+	modelDir := path.Join(home, ".quesadilla", "models", "gguf", "org", "a")
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a-q4.gguf", "a-q8.gguf", "a-mmproj.gguf"} {
+		if err := os.WriteFile(path.Join(modelDir, name), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	qmodel := `{
+		"ModelFamily": "org",
+		"ModelName": "a",
+		"ModelType": "gguf",
+		"SelectedTextModel": "a-q8.gguf",
+		"SelectedVisionModel": "a-mmproj.gguf",
+		"Variants": [
+			{"FileName": "a-q4.gguf", "SupportsChat": true},
+			{"FileName": "a-q8.gguf", "SupportsChat": true},
+			{"FileName": "a-mmproj.gguf", "SupportsVision": true}
+		]
+	}`
+	if err := os.WriteFile(path.Join(modelDir, definitions.QModelFileName), []byte(qmodel), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewLocalRepository()
+	m := repo.GetModel("org/a")
+	if m == nil {
+		t.Fatal("expected the model to be listed")
+	}
+	if m.SelectedTextModel != "a-q8.gguf" {
+		t.Errorf("SelectedTextModel = %q, want a-q8.gguf", m.SelectedTextModel)
+	}
+	if m.SelectedVisionModel != "a-mmproj.gguf" {
+		t.Errorf("SelectedVisionModel = %q, want a-mmproj.gguf", m.SelectedVisionModel)
+	}
+}
+
+// TestRefreshModelMetadataPreservesSelectedVariants verifies a metadata
+// refresh keeps the preferred text and vision variants, including changes
+// that were made in memory but not yet written to disk.
+func TestRefreshModelMetadataPreservesSelectedVariants(t *testing.T) {
+	home := withHome(t)
+	modelDir := path.Join(home, ".quesadilla", "models", "gguf", "org", "a")
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a-q4.gguf", "a-q8.gguf", "a-mmproj.gguf"} {
+		if err := os.WriteFile(path.Join(modelDir, name), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	qmodel := `{
+		"ModelFamily": "org",
+		"ModelName": "a",
+		"ModelSource": "Filesystem",
+		"ModelType": "gguf",
+		"SelectedTextModel": "a-q4.gguf",
+		"SelectedVisionModel": "a-mmproj.gguf",
+		"Variants": [
+			{"FileName": "a-q4.gguf", "SupportsChat": true},
+			{"FileName": "a-q8.gguf", "SupportsChat": true},
+			{"FileName": "a-mmproj.gguf", "SupportsVision": true}
+		]
+	}`
+	if err := os.WriteFile(path.Join(modelDir, definitions.QModelFileName), []byte(qmodel), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewLocalRepository()
+	m := repo.GetModel("org/a")
+	if m == nil {
+		t.Fatal("expected the model to be listed")
+	}
+
+	// Change the selections in memory, as the UI does before persisting.
+	m.SelectedTextModel = "a-q8.gguf"
+	m.SelectedVisionModel = "a-q4.gguf"
+
+	if err := repo.RefreshModelMetadata("org/a"); err != nil {
+		t.Fatalf("RefreshModelMetadata: %v", err)
+	}
+
+	qm := readQModel(t, modelDir)
+	if qm.SelectedTextModel != "a-q8.gguf" {
+		t.Errorf("qmodel SelectedTextModel = %q, want a-q8.gguf", qm.SelectedTextModel)
+	}
+	if qm.SelectedVisionModel != "a-q4.gguf" {
+		t.Errorf("qmodel SelectedVisionModel = %q, want a-q4.gguf", qm.SelectedVisionModel)
+	}
+
+	m = repo.GetModel("org/a")
+	if m == nil {
+		t.Fatal("expected the model to be listed after refresh")
+	}
+	if m.SelectedTextModel != "a-q8.gguf" {
+		t.Errorf("in-memory SelectedTextModel = %q, want a-q8.gguf", m.SelectedTextModel)
+	}
+	if m.SelectedVisionModel != "a-q4.gguf" {
+		t.Errorf("in-memory SelectedVisionModel = %q, want a-q4.gguf", m.SelectedVisionModel)
+	}
+}
+
+// TestUpdateModelMetadataPreservesSelectedVariants verifies refreshing a
+// model from its remote metadata keeps the preferred text and vision
+// variants stored in qmodel.json.
+func TestUpdateModelMetadataPreservesSelectedVariants(t *testing.T) {
+	home := withHome(t)
+	modelDir := path.Join(home, ".quesadilla", "models", "onnx", "org", "a")
+	if err := os.MkdirAll(modelDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path.Join(modelDir, "a.onnx"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	qmodel := `{
+		"ModelFamily": "org",
+		"ModelName": "a",
+		"ModelSource": "Filesystem",
+		"ModelType": "onnx",
+		"SelectedTextModel": "a.onnx",
+		"SelectedVisionModel": "a.onnx",
+		"Variants": [{"FileName": "a.onnx"}]
+	}`
+	if err := os.WriteFile(path.Join(modelDir, definitions.QModelFileName), []byte(qmodel), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewLocalRepository()
+	if repo.GetModel("org/a") == nil {
+		t.Fatal("expected the model to be listed")
+	}
+
+	err := repo.UpdateModelMetadata(&definitions.RemoteModel{
+		ModelFamily: "org",
+		ModelName:   "a",
+		ModelSource: "Filesystem",
+		ModelType:   "onnx",
+		Variants:    []definitions.ModelVariant{{FileName: "a.onnx"}},
+	})
+	if err != nil {
+		t.Fatalf("UpdateModelMetadata: %v", err)
+	}
+
+	qm := readQModel(t, modelDir)
+	if qm.SelectedTextModel != "a.onnx" {
+		t.Errorf("qmodel SelectedTextModel = %q, want a.onnx", qm.SelectedTextModel)
+	}
+	if qm.SelectedVisionModel != "a.onnx" {
+		t.Errorf("qmodel SelectedVisionModel = %q, want a.onnx", qm.SelectedVisionModel)
 	}
 }

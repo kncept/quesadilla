@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"encoding/json"
 	"net/url"
 	"os"
 	"path"
@@ -37,6 +38,16 @@ func newTestQApp(t *testing.T, modelNames ...string) *app.QApp {
 		}
 	}
 	return app.New()
+}
+
+// defaultVariantPath returns the path of the model's default text variant.
+func defaultVariantPath(t *testing.T, m *modelDefinitions.Model) string {
+	t.Helper()
+	v, err := m.GetDefaultVariant()
+	if err != nil {
+		t.Fatalf("GetDefaultVariant: %v", err)
+	}
+	return v.GetVariantPath()
 }
 
 // modelCell returns the label for the given column index of the model cell.
@@ -670,4 +681,104 @@ func findButtonByIconName(buttons []*widget.Button, substr string) *widget.Butto
 		}
 	}
 	return nil
+}
+
+// TestVariantOptions verifies the preferred-variant dropdowns offer only the
+// variants valid for the capability, plus the entry that clears the choice.
+func TestVariantOptions(t *testing.T) {
+	m := modelDefinitions.Model{
+		ModelFamily: "org",
+		ModelName:   "a",
+		Variants: []modelDefinitions.ModelVariant{
+			{FileName: "a-q4.gguf", SupportsChat: true},
+			{FileName: "a-q8.gguf", SupportsChat: true},
+			{FileName: "a-mmproj.gguf", SupportsVision: true},
+		},
+	}
+
+	textOptions, textSelected := variantOptions(m, "", func(v modelDefinitions.ModelVariant) bool {
+		return v.SupportsChat
+	})
+	wantText := []string{defaultVariantOption, "a-q4.gguf", "a-q8.gguf"}
+	if strings.Join(textOptions, ",") != strings.Join(wantText, ",") {
+		t.Errorf("text options = %v, want %v", textOptions, wantText)
+	}
+	if textSelected != defaultVariantOption {
+		t.Errorf("text selected = %q, want %q", textSelected, defaultVariantOption)
+	}
+
+	textOptions, textSelected = variantOptions(m, "a-q8.gguf", func(v modelDefinitions.ModelVariant) bool {
+		return v.SupportsChat
+	})
+	if textSelected != "a-q8.gguf" {
+		t.Errorf("text selected = %q, want a-q8.gguf", textSelected)
+	}
+
+	visionOptions, visionSelected := variantOptions(m, "a-mmproj.gguf", func(v modelDefinitions.ModelVariant) bool {
+		return v.SupportsVision
+	})
+	wantVision := []string{defaultVariantOption, "a-mmproj.gguf"}
+	if strings.Join(visionOptions, ",") != strings.Join(wantVision, ",") {
+		t.Errorf("vision options = %v, want %v", visionOptions, wantVision)
+	}
+	if visionSelected != "a-mmproj.gguf" {
+		t.Errorf("vision selected = %q, want a-mmproj.gguf", visionSelected)
+	}
+
+	// A selection that is not a valid variant falls back to the default entry.
+	_, textSelected = variantOptions(m, "gone.gguf", func(v modelDefinitions.ModelVariant) bool {
+		return v.SupportsChat
+	})
+	if textSelected != defaultVariantOption {
+		t.Errorf("selected for a missing variant = %q, want %q", textSelected, defaultVariantOption)
+	}
+}
+
+// TestSetSelectedVariantPersists verifies choosing a preferred variant writes
+// it to qmodel.json, and choosing "(use default)" clears it again.
+func TestSetSelectedVariantPersists(t *testing.T) {
+	test.NewApp()
+	qApp := newTestQApp(t, "tiny-llama")
+	g := CreateGui(nil, qApp)
+
+	m := qApp.LocalModels.GetModel("tiny-llama")
+	if m == nil {
+		t.Fatal("expected the test model to be installed")
+	}
+	qmPath := path.Join(m.ModelDirectory, modelDefinitions.QModelFileName)
+
+	g.setSelectedVariant("tiny-llama", false, "tiny-llama.gguf")
+	g.setSelectedVariant("tiny-llama", true, "tiny-llama.gguf")
+
+	readQModel := func() modelDefinitions.QModel {
+		t.Helper()
+		data, err := os.ReadFile(qmPath)
+		if err != nil {
+			t.Fatalf("reading qmodel.json: %v", err)
+		}
+		qm := modelDefinitions.QModel{}
+		if err := json.Unmarshal(data, &qm); err != nil {
+			t.Fatalf("parsing qmodel.json: %v", err)
+		}
+		return qm
+	}
+
+	qm := readQModel()
+	if qm.SelectedTextModel != "tiny-llama.gguf" {
+		t.Errorf("SelectedTextModel = %q, want tiny-llama.gguf", qm.SelectedTextModel)
+	}
+	if qm.SelectedVisionModel != "tiny-llama.gguf" {
+		t.Errorf("SelectedVisionModel = %q, want tiny-llama.gguf", qm.SelectedVisionModel)
+	}
+
+	g.setSelectedVariant("tiny-llama", false, "")
+	g.setSelectedVariant("tiny-llama", true, "")
+
+	qm = readQModel()
+	if qm.SelectedTextModel != "" {
+		t.Errorf("SelectedTextModel after clearing = %q, want empty", qm.SelectedTextModel)
+	}
+	if qm.SelectedVisionModel != "" {
+		t.Errorf("SelectedVisionModel after clearing = %q, want empty", qm.SelectedVisionModel)
+	}
 }

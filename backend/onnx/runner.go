@@ -58,7 +58,11 @@ func startOnnxServer(m *modelDefinitions.Model) (runnerDefinitions.RunningModel,
 	logger := log.New(io.MultiWriter(logs.Writer(), os.Stdout), providerId+": ", 0)
 	logger.Printf("starting %s (runtime %s)", m.FullModelName(), builtInVersion)
 
-	defaultVariant := m.GetDefaultVariant()
+	defaultVariant, err := m.GetDefaultVariant()
+	if err != nil {
+		logger.Printf("error: %v", err)
+		return nil, err
+	}
 	variantPath := defaultVariant.GetVariantPath()
 	logger.Printf("loading model %s", variantPath)
 

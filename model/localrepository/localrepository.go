@@ -141,6 +141,15 @@ func (this *LocalRepository) RemoveVariant(modelName string, fileName string) er
 	}
 	qm.Variants = newVariants
 
+	// Clear selections that pointed at the removed variant, so the metadata
+	// does not keep a reference to a file that is gone.
+	if qm.SelectedTextModel == fileName {
+		qm.SelectedTextModel = ""
+	}
+	if qm.SelectedVisionModel == fileName {
+		qm.SelectedVisionModel = ""
+	}
+
 	// If no variants left, remove the entire model directory
 	if len(qm.Variants) == 0 {
 		if err := os.RemoveAll(m.ModelDirectory); err != nil {
@@ -335,8 +344,11 @@ func (this *LocalRepository) RefreshModelMetadata(modelName string) error {
 		return fmt.Errorf("no qmodel.json found for %s", modelName)
 	}
 
-	// Preserve the active variant file name
+	// Preserve the persistent variant selections from the in-memory model
+	// (in case they were changed but not yet persisted)
 	activeVariant := model.ActiveVariantFileName
+	selectedText := model.SelectedTextModel
+	selectedVision := model.SelectedVisionModel
 
 	// Update the model in place with fresh metadata from qmodel.json
 	for i := range this.models {
@@ -351,20 +363,31 @@ func (this *LocalRepository) RefreshModelMetadata(modelName string) error {
 			this.models[i].LicenceFile = qm.LicenceFile
 			this.models[i].MetadataVersion = qm.MetadataVersion
 			this.models[i].Variants = qm.Variants
-			// Preserve ActiveVariantFileName from in-memory model (in case it was changed but not persisted)
+			this.models[i].ActiveVariantFileName = qm.ActiveVariantFileName
+			this.models[i].SelectedTextModel = qm.SelectedTextModel
+			this.models[i].SelectedVisionModel = qm.SelectedVisionModel
+			// Preserve the in-memory selections over the values read from disk
 			if activeVariant != "" {
 				this.models[i].ActiveVariantFileName = activeVariant
 				qm.ActiveVariantFileName = activeVariant
+			}
+			if selectedText != "" {
+				this.models[i].SelectedTextModel = selectedText
+				qm.SelectedTextModel = selectedText
+			}
+			if selectedVision != "" {
+				this.models[i].SelectedVisionModel = selectedVision
+				qm.SelectedVisionModel = selectedVision
 			}
 			break
 		}
 	}
 
-	// Persist the ActiveVariantFileName to qmodel.json before re-scanning
-	// so it survives the reload
-	if activeVariant != "" {
+	// Persist the variant selections to qmodel.json before re-scanning so
+	// they survive the reload
+	if activeVariant != "" || selectedText != "" || selectedVision != "" {
 		if err := writeQModel(model.ModelDirectory, qm); err != nil {
-			log.Printf("local repository: failed to persist ActiveVariantFileName: %v", err)
+			log.Printf("local repository: failed to persist variant selections: %v", err)
 		}
 	}
 
@@ -712,15 +735,18 @@ func loadModelDirectory(components []string, dir string, ext string) ([]definiti
 	}
 
 	model := definitions.Model{
-		MetadataVersion: qm.MetadataVersion,
-		ModelFamily:     qm.ModelFamily,
-		ModelName:       qm.ModelName,
-		ModelType:       qm.ModelType,
-		ModelDirectory:  dir,
-		Variants:        qm.Variants,
-		ModelSource:     qm.ModelSource,
-		ModelURL:        qm.ModelURL,
-		LicenceName:     qm.LicenceName,
+		MetadataVersion:       qm.MetadataVersion,
+		ModelFamily:           qm.ModelFamily,
+		ModelName:             qm.ModelName,
+		ModelType:             qm.ModelType,
+		ModelDirectory:        dir,
+		Variants:              qm.Variants,
+		ModelSource:           qm.ModelSource,
+		ModelURL:              qm.ModelURL,
+		LicenceName:           qm.LicenceName,
+		ActiveVariantFileName: qm.ActiveVariantFileName,
+		SelectedTextModel:     qm.SelectedTextModel,
+		SelectedVisionModel:   qm.SelectedVisionModel,
 	}
 	if qm.LicenceFile != "" {
 		model.LicenceFile = path.Join(dir, qm.LicenceFile)

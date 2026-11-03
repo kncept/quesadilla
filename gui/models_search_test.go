@@ -14,8 +14,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/kncept/quesadilla/app"
-	"github.com/kncept/quesadilla/model/remoterepository"
 	modelDefinitions "github.com/kncept/quesadilla/model/definitions"
+	"github.com/kncept/quesadilla/model/remoterepository"
 )
 
 // newTestQAppWithLocalAiModel points HOME at a temporary directory holding
@@ -622,8 +622,8 @@ func TestModelSearchDownloadFromURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantFile := path.Join(home, ".quesadilla", "models", "gguf", "org", "a", "a.gguf")
-	if m.GetDefaultVariant().GetVariantPath() != wantFile {
-		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want %q", m.GetDefaultVariant().GetVariantPath(), wantFile)
+	if defaultVariantPath(t, m) != wantFile {
+		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want %q", defaultVariantPath(t, m), wantFile)
 	}
 	data, err := os.ReadFile(wantFile)
 	if err != nil {
@@ -696,7 +696,7 @@ func TestModelSearchHuggingFaceOneRowPerFile(t *testing.T) {
 	hfModels := []modelDefinitions.RemoteModel{
 		{
 			ModelFamily: "org", ModelName: "Ggufy", ModelType: "gguf",
-			ModelURL: "https://huggingface.co/org/Ggufy",
+			ModelURL:    "https://huggingface.co/org/Ggufy",
 			ModelSource: remoterepository.HuggingFaceScannerName,
 			Variants: []modelDefinitions.ModelVariant{
 				{FileName: "Ggufy-Q4.gguf", Location: "https://x.org/Ggufy-Q4"},

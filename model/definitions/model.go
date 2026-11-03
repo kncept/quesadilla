@@ -1,6 +1,7 @@
 package definitions
 
 import (
+	"fmt"
 	"path"
 	"strings"
 	"time"
@@ -43,35 +44,39 @@ const QModelFileName = "qmodel.json"
 // ModelDirectory is the directory containing the model's qmodel.json. For
 // non-linked variants, this is used to resolve the variant's file path.
 type ModelVariant struct {
-	FileName          string            `json:"FileName"`
-	Description       string            `json:"Description,omitempty"`
-	ImportedAt        time.Time         `json:"ImportedAt"`
-	FileSize          int64             `json:"FileSize"`
-	LinkedModel       bool              `json:"LinkedModel"`
-	Location          string            `json:"Location,omitempty"`
-	SupportsVision    bool              `json:"SupportsVision,omitempty"`
-	SupportsChat      bool              `json:"SupportsChat,omitempty"`
-	EmbeddedMetadata  map[string]string `json:"EmbeddedMetadata,omitempty"`
-	Active            bool              `json:"Active,omitempty"`
-	ModelDirectory    string            `json:"-"` // not persisted, set by the model when returning variants
+	FileName         string            `json:"FileName"`
+	Description      string            `json:"Description,omitempty"`
+	ImportedAt       time.Time         `json:"ImportedAt"`
+	FileSize         int64             `json:"FileSize"`
+	LinkedModel      bool              `json:"LinkedModel"`
+	Location         string            `json:"Location,omitempty"`
+	SupportsVision   bool              `json:"SupportsVision,omitempty"`
+	SupportsChat     bool              `json:"SupportsChat,omitempty"`
+	EmbeddedMetadata map[string]string `json:"EmbeddedMetadata,omitempty"`
+	Active           bool              `json:"Active,omitempty"`
+	ModelDirectory   string            `json:"-"` // not persisted, set by the model when returning variants
 }
 
 // Model is an installed local model: a family and a name (together it is
 // identified by "family/name"), a type that selects its backend, and the
 // variants (files) that can be run. ActiveVariantFileName records which
 // variant is currently active for chat/vision, persisting the setting.
+// SelectedTextModel and SelectedVisionModel name the variants preferred for
+// text and vision respectively, falling back to the defaults when empty.
 type Model struct { // output to qmodel.json
-	MetadataVersion string
-	ModelFamily     string
-	ModelName       string
-	ModelType       string // implies the backend type required
-	ModelDirectory  string // the directory holding qmodel.json (and usually the variant files)
-	Variants        []ModelVariant
-	ModelSource     string // name of the scanner that found the model
-	ModelURL        string // URL of the model's page at its source, if known
-	LicenceName     string // eg "apache-2.0"
-	LicenceFile     string // path to the stored licence file, if one was stored
+	MetadataVersion       string
+	ModelFamily           string
+	ModelName             string
+	ModelType             string // implies the backend type required
+	ModelDirectory        string // the directory holding qmodel.json (and usually the variant files)
+	Variants              []ModelVariant
+	ModelSource           string // name of the scanner that found the model
+	ModelURL              string // URL of the model's page at its source, if known
+	LicenceName           string // eg "apache-2.0"
+	LicenceFile           string // path to the stored licence file, if one was stored
 	ActiveVariantFileName string // the file name of the currently active variant
+	SelectedTextModel     string // the file name of the variant preferred for text
+	SelectedVisionModel   string // the file name of the variant preferred for vision
 }
 
 // RemoteModel is a model a scanner found somewhere outside the local
@@ -98,18 +103,21 @@ type RemoteModel struct {
 // variants that can be run, and its licence, if any. The family and name
 // match the model's directory (<ModelFamily>/<ModelName>). An ActiveVariantFileName
 // records which variant is currently active for chat/vision, so the setting
-// persists across app restarts.
+// persists across app restarts. SelectedTextModel and SelectedVisionModel
+// record the variants preferred for text and vision.
 type QModel struct {
-	MetadataVersion string         `json:"MetadataVersion"`
-	ModelFamily     string         `json:"ModelFamily"`
-	ModelName       string         `json:"ModelName"`
-	ModelSource     string         `json:"ModelSource"`
-	ModelType       string         `json:"ModelType"`
-	ModelURL        string         `json:"ModelURL,omitempty"`
-	Variants        []ModelVariant `json:"Variants"`
-	LicenceName     string         `json:"LicenceName,omitempty"`
-	LicenceFile     string         `json:"LicenceFile,omitempty"`
-	ActiveVariantFileName string      `json:"ActiveVariantFileName,omitempty"`
+	MetadataVersion       string         `json:"MetadataVersion"`
+	ModelFamily           string         `json:"ModelFamily"`
+	ModelName             string         `json:"ModelName"`
+	ModelSource           string         `json:"ModelSource"`
+	ModelType             string         `json:"ModelType"`
+	ModelURL              string         `json:"ModelURL,omitempty"`
+	Variants              []ModelVariant `json:"Variants"`
+	LicenceName           string         `json:"LicenceName,omitempty"`
+	LicenceFile           string         `json:"LicenceFile,omitempty"`
+	ActiveVariantFileName string         `json:"ActiveVariantFileName,omitempty"`
+	SelectedTextModel     string         `json:"SelectedTextModel,omitempty"`
+	SelectedVisionModel   string         `json:"SelectedVisionModel,omitempty"`
 }
 
 // ModelScanner finds models installed or hosted elsewhere.
@@ -188,16 +196,25 @@ func (m Model) VariantPath(v ModelVariant) string {
 	return path.Join(m.ModelDirectory, v.FileName)
 }
 
-// GetDefaultVariant returns the first variant of the model, or a zero
-// ModelVariant if the model has no variants. The returned variant has its
-// ModelDirectory field set to the model's directory for path resolution.
-func (m Model) GetDefaultVariant() ModelVariant {
-	if len(m.Variants) == 0 {
-		return ModelVariant{}
+// GetDefaultVariant returns the model's default text variant: the variant
+// named by SelectedTextModel when that is set, or the first variant
+// otherwise. The returned variant has its ModelDirectory field set to the
+// model's directory for path resolution.
+//
+// It returns an error when SelectedTextModel does not match any of the
+// model's variants (for example because the metadata is stale or corrupted),
+// or when the model has no variants at all.
+func (m Model) GetDefaultVariant() (ModelVariant, error) {
+	if m.SelectedTextModel != "" {
+		if v, ok := m.variantNamed(m.SelectedTextModel); ok {
+			return v, nil
+		}
+		return ModelVariant{}, fmt.Errorf("model %s: selected text variant %q not found", m.FullModelName(), m.SelectedTextModel)
 	}
-	v := m.Variants[0]
-	v.ModelDirectory = m.ModelDirectory
-	return v
+	if len(m.Variants) == 0 {
+		return ModelVariant{}, fmt.Errorf("model %s has no variants", m.FullModelName())
+	}
+	return m.variantAt(0), nil
 }
 
 // GetVariantPath returns the resolved path of this variant: for linked
@@ -210,18 +227,50 @@ func (v ModelVariant) GetVariantPath() string {
 	return path.Join(v.ModelDirectory, v.FileName)
 }
 
-// GetDefaultVisionVariant returns the first vision-capable variant of the
-// model, or a zero ModelVariant if the model has no vision-capable variant.
-// For gguf models this is typically the model's mmproj (multimodal
-// projector) file, which can be passed to llama-server as --mmproj alongside
-// a text-only variant of the model. The returned variant has its
-// ModelDirectory field set to the model's directory for path resolution.
-func (m Model) GetDefaultVisionVariant() ModelVariant {
+// GetDefaultVisionVariant returns the model's default vision variant: the
+// variant named by SelectedVisionModel when that is set, or the first
+// vision-capable variant otherwise. For gguf models this is typically the
+// model's mmproj (multimodal projector) file, which can be passed to
+// llama-server as --mmproj alongside a text-only variant of the model. The
+// returned variant has its ModelDirectory field set to the model's directory
+// for path resolution.
+//
+// It returns an error when SelectedVisionModel does not match any of the
+// model's variants (for example because the metadata is stale or corrupted).
+// A model with no vision-capable variant and no selection is not an error: a
+// zero ModelVariant is returned, as before.
+func (m Model) GetDefaultVisionVariant() (ModelVariant, error) {
+	if m.SelectedVisionModel != "" {
+		if v, ok := m.variantNamed(m.SelectedVisionModel); ok {
+			return v, nil
+		}
+		return ModelVariant{}, fmt.Errorf("model %s: selected vision variant %q not found", m.FullModelName(), m.SelectedVisionModel)
+	}
 	for _, v := range m.Variants {
 		if v.SupportsVision {
 			v.ModelDirectory = m.ModelDirectory
-			return v
+			return v, nil
 		}
 	}
-	return ModelVariant{}
+	return ModelVariant{}, nil
+}
+
+// variantNamed returns the model's variant with the given file name, with its
+// ModelDirectory set for path resolution.
+func (m Model) variantNamed(fileName string) (ModelVariant, bool) {
+	for _, v := range m.Variants {
+		if v.FileName == fileName {
+			v.ModelDirectory = m.ModelDirectory
+			return v, true
+		}
+	}
+	return ModelVariant{}, false
+}
+
+// variantAt returns the model's variant at index, with its ModelDirectory set
+// for path resolution.
+func (m Model) variantAt(index int) ModelVariant {
+	v := m.Variants[index]
+	v.ModelDirectory = m.ModelDirectory
+	return v
 }

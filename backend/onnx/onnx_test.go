@@ -78,12 +78,23 @@ func TestStartFailsForMissingModel(t *testing.T) {
 
 // fixtureModel returns the test model (a two-input Add, inputs x and y of
 // shape [3,4,5], one output "sum").
+// fixtureVariantPath returns the path of the fixture model's default variant.
+func fixtureVariantPath(t *testing.T) string {
+	t.Helper()
+	fm := fixtureModel()
+	v, err := fm.GetDefaultVariant()
+	if err != nil {
+		t.Fatalf("GetDefaultVariant: %v", err)
+	}
+	return v.GetVariantPath()
+}
+
 func fixtureModel() *modelDefinitions.Model {
 	// Get the absolute path to the testdata directory
 	testDataDir, _ := filepath.Abs("testdata")
 	return &modelDefinitions.Model{
-		ModelName:     "add-model",
-		ModelType:     string(modelDefinitions.ModelTypeONNX),
+		ModelName:      "add-model",
+		ModelType:      string(modelDefinitions.ModelTypeONNX),
 		ModelDirectory: testDataDir,
 		Variants: []modelDefinitions.ModelVariant{
 			{FileName: "add_model.onnx", Location: filepath.Join(testDataDir, "add_model.onnx")},
@@ -94,8 +105,7 @@ func fixtureModel() *modelDefinitions.Model {
 // TestLoadAndRunFixture verifies the onnx-go pipeline end to end: the model
 // decodes, the inputs can be set, and a run produces the summed output.
 func TestLoadAndRunFixture(t *testing.T) {
-	fm := fixtureModel()
-	model, graph, err := loadOnnxModel(fm.GetDefaultVariant().GetVariantPath())
+	model, graph, err := loadOnnxModel(fixtureVariantPath(t))
 	if err != nil {
 		t.Fatalf("loadOnnxModel: %v", err)
 	}
@@ -152,7 +162,7 @@ func TestLoadAndRunFixture(t *testing.T) {
 func newTestRunningModel(t *testing.T, listener net.Listener) *onnxRunningModel {
 	t.Helper()
 	fm := fixtureModel()
-	model, graph, err := loadOnnxModel(fm.GetDefaultVariant().GetVariantPath())
+	model, graph, err := loadOnnxModel(fixtureVariantPath(t))
 	if err != nil {
 		t.Fatalf("loadOnnxModel: %v", err)
 	}

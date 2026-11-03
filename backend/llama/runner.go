@@ -27,7 +27,10 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	// independent writers, so their partial lines don't interleave).
 	logs := runnerDefinitions.NewLogBuffer(runnerDefinitions.DefaultMaxLogLines)
 
-	modelVariant := m.GetDefaultVariant()
+	modelVariant, err := m.GetDefaultVariant()
+	if err != nil {
+		return nil, err
+	}
 	variantPath := modelVariant.GetVariantPath()
 
 	args := []string{
@@ -41,11 +44,17 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	if modelVariant.SupportsVision {
 		mmprojPath := modelVariant.GetVariantPath()
 		args = append(args, "--mmproj", mmprojPath)
-	} else if visionVariant := m.GetDefaultVisionVariant(); visionVariant.FileName != "" {
-		// The default variant isn't vision-capable, but the model has a
-		// vision-capable variant: use it as the multimodal projector.
-		mmprojPath := visionVariant.GetVariantPath()
-		args = append(args, "--mmproj", mmprojPath)
+	} else {
+		visionVariant, err := m.GetDefaultVisionVariant()
+		if err != nil {
+			return nil, err
+		}
+		if visionVariant.FileName != "" {
+			// The default variant isn't vision-capable, but the model has a
+			// vision-capable variant: use it as the multimodal projector.
+			mmprojPath := visionVariant.GetVariantPath()
+			args = append(args, "--mmproj", mmprojPath)
+		}
 	}
 
 	args = append(args,
@@ -69,7 +78,7 @@ func startLlamaServer(m *modelDefinitions.Model, version string) (runnerDefiniti
 	cmd.Stderr = logs.Writer()
 	fmt.Fprintf(logs.Writer(), "CMD: %+v\n", cmd)
 
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		fmt.Printf("Error Starting: %v\n", err)
 		return nil, err

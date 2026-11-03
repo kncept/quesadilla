@@ -766,6 +766,11 @@ func (this *QGUI) writeModelMetadata(model *definitions.Model) {
 		qm.ActiveVariantFileName = model.ActiveVariantFileName
 	}
 
+	// Update the preferred variants for text and vision. These are assigned
+	// even when empty so clearing a selection is persisted too.
+	qm.SelectedTextModel = model.SelectedTextModel
+	qm.SelectedVisionModel = model.SelectedVisionModel
+
 	// Write back
 	jsonData, err := json.MarshalIndent(qm, "", " ")
 	if err != nil {
@@ -823,11 +828,94 @@ func (this *QGUI) buildModelMetadataSection(m definitions.Model) fyne.CanvasObje
 	return container.NewVBox(items...)
 }
 
-// buildModelDetailsModelView fills the "Model" view with the model's metadata.
+// defaultVariantOption is the dropdown entry that clears a model's preferred
+// text or vision variant, leaving the default selection behaviour in place.
+const defaultVariantOption = "(use default)"
+
+// buildModelDetailsModelView fills the "Model" view with the model's metadata
+// and its preferred-variant dropdowns.
 func (this *QGUI) buildModelDetailsModelView(m definitions.Model) {
 	this.modelDetailsModelView.RemoveAll()
 	this.modelDetailsModelView.Add(this.buildModelMetadataSection(m))
+	this.modelDetailsModelView.Add(widget.NewSeparator())
+	this.modelDetailsModelView.Add(this.buildModelDetailsDefaultVariants(m))
 	this.modelDetailsModelView.Refresh()
+}
+
+// buildModelDetailsDefaultVariants builds the dropdowns that choose which
+// variant the model uses by default for text and for vision. Only variants
+// that support the relevant capability are offered; when there are none the
+// dropdown holds just the "(use default)" entry.
+func (this *QGUI) buildModelDetailsDefaultVariants(m definitions.Model) fyne.CanvasObject {
+	items := []fyne.CanvasObject{headingLabel("Default Variants")}
+
+	textOptions, textSelected := variantOptions(m, m.SelectedTextModel, func(v definitions.ModelVariant) bool {
+		return v.SupportsChat
+	})
+	items = append(items, this.variantSelectRow("Text Variant", textOptions, textSelected, func(fileName string) {
+		this.setSelectedVariant(m.FullModelName(), false, fileName)
+	}))
+
+	visionOptions, visionSelected := variantOptions(m, m.SelectedVisionModel, func(v definitions.ModelVariant) bool {
+		return v.SupportsVision
+	})
+	items = append(items, this.variantSelectRow("Vision Variant", visionOptions, visionSelected, func(fileName string) {
+		this.setSelectedVariant(m.FullModelName(), true, fileName)
+	}))
+
+	return container.NewVBox(items...)
+}
+
+// variantOptions builds a variant dropdown's options and the entry to select:
+// the "(use default)" entry, then the file names of the variants the valid
+// predicate accepts. The selected entry is the model's current choice when it
+// is one of those valid variants, or "(use default)" otherwise.
+func variantOptions(m definitions.Model, selected string, valid func(definitions.ModelVariant) bool) ([]string, string) {
+	options := []string{defaultVariantOption}
+	chosen := defaultVariantOption
+	for _, v := range m.Variants {
+		if !valid(v) {
+			continue
+		}
+		options = append(options, v.FileName)
+		if v.FileName == selected {
+			chosen = v.FileName
+		}
+	}
+	return options, chosen
+}
+
+// variantSelectRow builds a label beside a dropdown for choosing a variant.
+// The callback receives the chosen file name, or "" for "(use default)".
+func (this *QGUI) variantSelectRow(label string, options []string, selected string, onChanged func(string)) fyne.CanvasObject {
+	selectWidget := widget.NewSelect(options, nil)
+	selectWidget.SetSelected(selected)
+	selectWidget.OnChanged = func(option string) {
+		if option == defaultVariantOption {
+			option = ""
+		}
+		onChanged(option)
+	}
+
+	labelWidget := widget.NewLabelWithStyle(label+":", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	labelWidget.Wrapping = fyne.TextWrapOff
+	return container.NewGridWithColumns(2, labelWidget, selectWidget)
+}
+
+// setSelectedVariant records the named variant as the model's preferred
+// variant for text (vision false) or vision (vision true), and persists it to
+// the model's metadata.
+func (this *QGUI) setSelectedVariant(modelName string, vision bool, fileName string) {
+	model := this.QApp.LocalModels.GetModel(modelName)
+	if model == nil {
+		return
+	}
+	if vision {
+		model.SelectedVisionModel = fileName
+	} else {
+		model.SelectedTextModel = fileName
+	}
+	this.writeModelMetadata(model)
 }
 
 // buildModelDetailsVariantView fills the variant view with the metadata of the

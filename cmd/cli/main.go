@@ -256,8 +256,12 @@ func main() {
 				log.Fatalf("Variant %s not found in model %s", CLI.Model.GGUFInfo.Variant, model.FullModelName())
 			}
 		} else {
-			// Use the first variant
-			variantPath = model.GetDefaultVariant().GetVariantPath()
+			// Use the model's default text variant
+			defaultVariant, err := model.GetDefaultVariant()
+			if err != nil {
+				log.Fatalf("Failed to find default variant: %v", err)
+			}
+			variantPath = defaultVariant.GetVariantPath()
 		}
 		if variantPath == "" {
 			log.Fatalf("No variant file found for model %s", model.FullModelName())

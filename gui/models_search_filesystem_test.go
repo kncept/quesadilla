@@ -204,8 +204,8 @@ func TestModelSearchFilesystemImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantFile := path.Join(home, ".quesadilla", "models", "gguf", "none", "tiny", "tiny.gguf")
-	if m.GetDefaultVariant().GetVariantPath() != wantFile {
-		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want %q", m.GetDefaultVariant().GetVariantPath(), wantFile)
+	if defaultVariantPath(t, m) != wantFile {
+		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want %q", defaultVariantPath(t, m), wantFile)
 	}
 	if _, err := os.Stat(wantFile); err != nil {
 		t.Errorf("the imported file: %v", err)
@@ -246,8 +246,8 @@ func TestModelSearchFilesystemLink(t *testing.T) {
 	if m == nil {
 		t.Fatal("expected tiny to be linked after the action")
 	}
-	if m.GetDefaultVariant().GetVariantPath() != srcFile {
-		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want the linked source %q", m.GetDefaultVariant().GetVariantPath(), srcFile)
+	if defaultVariantPath(t, m) != srcFile {
+		t.Errorf("GetDefaultVariant().GetVariantPath() = %q, want the linked source %q", defaultVariantPath(t, m), srcFile)
 	}
 	if len(m.Variants) != 1 || !m.Variants[0].LinkedModel {
 		t.Errorf("expected a single linked variant, got %+v", m.Variants)
