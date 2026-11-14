@@ -46,6 +46,13 @@ type QGUI struct {
 	// instead of stacking up duplicates. Guarded by mu.
 	logWindows map[string]fyne.Window
 
+	// manageWindows holds the open Manage window for each backend, keyed by
+	// backend id, so opening a backend's manager again focuses the existing
+	// window instead of stacking up duplicates. manageManagers holds the
+	// state behind those windows. Guarded by mu.
+	manageWindows  map[string]fyne.Window
+	manageManagers map[string]*backendManager
+
 	// The pages whose content changes over time (running status, uptime,
 	// the backend order); kept up to date by the status ticker in
 	// [QGUI.Start]. Nil until the main window is built.
@@ -218,6 +225,14 @@ func CreateGui(SysLink SystemAgnosticOperations, qApp *qapp.QApp) *QGUI {
 	}
 }
 
+// refreshTrayMenu refreshes the system-tray menu so it reflects the currently
+// running models. It is a no-op when the tray is not available.
+func (this *QGUI) refreshTrayMenu() {
+	if this.tray != nil {
+		this.tray.Refresh()
+	}
+}
+
 // refreshDynamicPages re-renders the pages whose content changes over time:
 // the installed-models table (running status and start/stop buttons) and the
 // Overview's running-models section. Safe to call from any goroutine; widgets
@@ -234,6 +249,9 @@ func (this *QGUI) refreshDynamicPages() {
 				this.runningModelsTable.Refresh()
 				this.updateRunningModelsVisibility()
 			})
+		}
+		if this.backendsTable != nil {
+			fyne.Do(func() { this.backendsTable.Refresh() })
 		}
 	})
 }

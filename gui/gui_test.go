@@ -16,6 +16,7 @@ import (
 
 	"github.com/kncept/quesadilla/app"
 	"github.com/kncept/quesadilla/gui/tray"
+	runnerDefinitions "github.com/kncept/quesadilla/runner/definitions"
 )
 
 func menuLabels(g *QGUI) []string {
@@ -125,7 +126,9 @@ func newTrayGui(t *testing.T) *QGUI {
 		TrayMenu:              fyne.NewMenu("Quesadilla"),
 		Items:                 []*fyne.MenuItem{},
 		RunningModelsRegistry: g.QApp.RunningModelRegistry(),
+		OnModelSelected:       func(model runnerDefinitions.RunningModel) { g.showLogs(model) },
 		OpenControlSuite:      g.Quit,
+		Quit:                  g.Quit,
 	}
 	return g
 }

@@ -2,6 +2,7 @@ package compress
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"io"
 	"os"
@@ -91,6 +92,50 @@ func UntarGz(gzFilePath, target string) error {
 				return err
 			}
 			file.Close()
+		}
+	}
+	return nil
+}
+
+// Unzip extracts a zip file to the target directory.
+func Unzip(zipFilePath, target string) error {
+	reader, err := zip.OpenReader(zipFilePath)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		path := filepath.Join(target, file.Name)
+
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(path, file.Mode()); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Ensure parent directory exists
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return err
+		}
+
+		dstFile, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, file.Mode())
+		if err != nil {
+			return err
+		}
+
+		srcFile, err := file.Open()
+		if err != nil {
+			dstFile.Close()
+			return err
+		}
+
+		_, err = io.Copy(dstFile, srcFile)
+		srcFile.Close()
+		dstFile.Close()
+		if err != nil {
+			return err
 		}
 	}
 	return nil

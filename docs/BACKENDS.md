@@ -18,6 +18,11 @@ Every backend implements `definitions.Backend` (backend/definitions/backend.go):
 - `Start(model)` - run the model, returning a `RunningModel` - the handle the
   app uses to wait on, stop, and read the logs of the run
 
+A backend whose runtime versions are downloaded at runtime also implements
+`definitions.ManageableBackend` (a marker interface). The GUI gives those
+backends a **Manage** button and window; built-in backends do not implement it,
+so they have nothing to manage.
+
 ## Known backends
 
 ### `llama-binary` (llama.cpp)
@@ -25,7 +30,10 @@ Every backend implements `definitions.Backend` (backend/definitions/backend.go):
 Runs the llama.cpp `llama-server` binary as a child process. Versions are
 downloaded from the ggml-org/llama.cpp GitHub releases and installed under
 `~/.quesadilla/runners/llama-binary/binaries/<version>/`. Serves an
-OpenAI-compatible API on localhost:9931. Supports `gguf` models.
+OpenAI-compatible API on localhost:9931. Supports `gguf` models. In the GUI its
+Backends row has a **Manage** button that lists installed and installable
+versions, installs the latest release for the host platform, and removes
+installed versions - the same operations as the CLI's `backend` commands.
 
 ### `gogguf` (WIP)
 

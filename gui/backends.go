@@ -65,7 +65,7 @@ func (this *QGUI) newBackendsTable() *widget.Table {
 	table.SetColumnWidth(0, 110) // Model Type
 	table.SetColumnWidth(1, 160) // Backend
 	table.SetColumnWidth(2, 180) // Installed Versions
-	table.SetColumnWidth(3, 110) // Actions
+	table.SetColumnWidth(3, 230) // Actions
 
 	this.backendsTable = table
 	return table
@@ -79,9 +79,10 @@ func (this *QGUI) newBackendsTable() *widget.Table {
 // buttons are only measured and never rendered (updateBackendCell replaces
 // the contents).
 func backendCellFactory() fyne.CanvasObject {
+	manage := widget.NewButtonWithIcon("Manage", theme.SettingsIcon(), nil)
 	up := widget.NewButtonWithIcon("", theme.MenuDropUpIcon(), nil)
 	down := widget.NewButtonWithIcon("", theme.MenuDropDownIcon(), nil)
-	return container.NewVBox(container.NewHBox(up, down))
+	return container.NewVBox(container.NewHBox(manage, up, down))
 }
 
 // updateBackendCell fills one cell of the backends table: a label for the
@@ -90,13 +91,37 @@ func (this *QGUI) updateBackendCell(order []config.BackendOrderEntry, id widget.
 	entry := order[id.Row]
 	cell.RemoveAll()
 	if id.Col == len(backendColumns)-1 {
-		cell.Add(this.backendMoveButtons(order, id.Row))
+		cell.Add(this.backendActions(order, id.Row))
 	} else {
 		label := widget.NewLabel(backendCell(entry, this.QApp.Backends.Backend(entry.BackendId), isGroupTop(order, id.Row), id.Col))
 		label.Wrapping = fyne.TextWrapOff
 		cell.Add(label)
 	}
 	cell.Refresh()
+}
+
+// backendActions builds the action buttons for a backends-table row: move
+// up/down buttons first, then a Manage button for backends whose versions are
+// installed at runtime.
+func (this *QGUI) backendActions(order []config.BackendOrderEntry, row int) fyne.CanvasObject {
+	actions := container.NewHBox()
+	actions.Add(this.backendMoveButtons(order, row))
+	if backend := this.QApp.Backends.Backend(order[row].BackendId); isManageableBackend(backend) {
+		actions.Add(widget.NewButtonWithIcon("Manage", theme.SettingsIcon(), func() {
+			this.showBackendManager(backend)
+		}))
+	}
+	return actions
+}
+
+// isManageableBackend reports whether the backend opts in to runtime version
+// management, and so gets a Manage window.
+func isManageableBackend(backend backendDefinitions.Backend) bool {
+	if backend == nil {
+		return false
+	}
+	_, ok := backend.(backendDefinitions.ManageableBackend)
+	return ok
 }
 
 // backendMoveButtons builds the move up/down buttons for a backends-table

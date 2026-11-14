@@ -17,34 +17,79 @@ import (
 // backend: it selects the release assets for the current platform, downloads
 // and unpacks them, and tidies up the result.
 func installLlamaAssets(version string, nameToDownloadUrl map[string]string) error {
+	// Determine the asset pattern to match for the current platform/arch.
+	// llama.cpp releases use specific naming conventions:
+	// - Linux: ubuntu-x64, ubuntu-arm64 (not linux-amd64)
+	// - macOS: macos-x64, macos-arm64
+	// - Windows: win-cpu-x64, win-cpu-arm64
+	// We match the basic CPU variant (no CUDA, ROCm, Vulkan, etc.)
+	var archPattern string
+	switch runtime.GOARCH {
+	case "amd64":
+		archPattern = "x64"
+	case "arm64":
+		archPattern = "arm64"
+	default:
+		return fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
+	}
+
+	var osPattern string
+	switch runtime.GOOS {
+	case "linux":
+		osPattern = "ubuntu"
+	case "darwin":
+		osPattern = "macos"
+	case "windows":
+		osPattern = "win-cpu"
+	default:
+		return fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+	}
+
+	// Match pattern: llama-<version>-bin-<osPattern>-<archPattern>
+	// e.g., llama-b4000-bin-ubuntu-x64.tar.gz
+	assetPrefix := fmt.Sprintf("llama-%s-bin-%s-%s", version, osPattern, archPattern)
+
 	assetsToDownload := make([]string, 0)
-
-	matchers := make([]func(string) bool, 0)
-	matchers = append(matchers, func(name string) bool {
-		return strings.Contains(name, runtime.GOARCH)
-	})
-	matchers = append(matchers, func(name string) bool {
-		// handle darwin/macos definition
-		if runtime.GOOS == "darwin" {
-			return strings.Contains(name, "darwin") || strings.Contains(name, "macos")
-		}
-		return strings.Contains(name, runtime.GOOS)
-	})
-
-	for name, _ := range nameToDownloadUrl {
-		match := true
-		for _, matcher := range matchers {
-			match = match && matcher(name)
-		}
-		if match {
-			assetsToDownload = append(assetsToDownload, name)
+	for name := range nameToDownloadUrl {
+		if strings.HasPrefix(name, assetPrefix) {
+			// Skip specialized variants (cuda, rocm, vulkan, openvino, etc.)
+			// by ensuring the next char after prefix is . or - (end of base name)
+			// or it's the exact base pattern
+			if len(name) == len(assetPrefix) ||
+				strings.HasSuffix(name, ".tar.gz") ||
+				strings.HasSuffix(name, ".zip") {
+				// Additional check: avoid specialized variants
+				suffix := name[len(assetPrefix):]
+				if suffix == "" || strings.HasPrefix(suffix, ".") ||
+					// Allow .tar.gz, .zip extensions
+					(suffix == ".tar.gz" || suffix == ".zip") {
+					assetsToDownload = append(assetsToDownload, name)
+				}
+			}
 		}
 	}
 
 	downloadsDirectory := qenv.QBinariesDirectory(providerId)
 	if len(assetsToDownload) == 0 {
-		panic("Unable to work out what assets to download")
+		// Fallback: try to match any asset with the os/arch pattern
+		for name := range nameToDownloadUrl {
+			if strings.Contains(name, osPattern) && strings.Contains(name, archPattern) &&
+				!strings.Contains(name, "cuda") && !strings.Contains(name, "rocm") &&
+				!strings.Contains(name, "vulkan") && !strings.Contains(name, "openvino") &&
+				!strings.Contains(name, "sycl") && !strings.Contains(name, "openblas") &&
+				!strings.Contains(name, "opencl") && !strings.Contains(name, "hip") &&
+				!strings.Contains(name, "kompute") && !strings.Contains(name, "llvm") &&
+				!strings.Contains(name, "msvc") && !strings.Contains(name, "zdnn") {
+				assetsToDownload = append(assetsToDownload, name)
+			}
+		}
 	}
+	if len(assetsToDownload) == 0 {
+		panic(fmt.Sprintf("Unable to work out what assets to download for %s/%s (tried prefix: %s)", runtime.GOOS, runtime.GOARCH, assetPrefix))
+	}
+
+	// Prefer .tar.gz over .zip for Linux/macOS, .zip for Windows
+	// But usually there's only one match anyway
 	for _, assetName := range assetsToDownload {
 		browserDownloadUrl := nameToDownloadUrl[assetName]
 
@@ -64,8 +109,13 @@ func installLlamaAssets(version string, nameToDownloadUrl map[string]string) err
 			if err != nil {
 				return err
 			}
+		} else if strings.HasSuffix(assetName, ".zip") {
+			err = compress.Unzip(path.Join(downloadDirectory, assetName), downloadDirectory)
+			if err != nil {
+				return err
+			}
 		} else {
-			return fmt.Errorf("unknown file format to handle")
+			return fmt.Errorf("unknown file format to handle: %s", assetName)
 		}
 		err = os.Remove(path.Join(downloadDirectory, assetName))
 		if err != nil {

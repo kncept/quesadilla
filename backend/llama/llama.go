@@ -10,6 +10,7 @@ import (
 )
 
 var _ definitions.Backend = (*llamaBackend)(nil)
+var _ definitions.ManageableBackend = (*llamaBackend)(nil)
 
 const providerId string = "llama-binary"
 
@@ -68,6 +69,11 @@ func (this *llamaBackend) LatestVersion() string {
 func (l *llamaBackend) ModelTypes() []string {
 	return []string{"gguf"}
 }
+
+// Manageable implements [definitions.ManageableBackend]. The llama.cpp
+// runtime is downloaded from GitHub releases, so the GUI offers its Manage
+// window.
+func (this *llamaBackend) Manageable() {}
 
 // RemoveVersion implements [definitions.Backend].
 func (this *llamaBackend) RemoveVersion(version string) error {

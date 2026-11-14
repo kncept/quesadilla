@@ -75,6 +75,19 @@ Backends broken out by the model types they support: one row per (model type, ba
 The rows follow the persisted (model type, backend id) order, where the topmost backend of a model type is the default backend for that type.
 Each row has move up/down buttons to reorder the backends within their model type; the order is persisted in the config (~/.quesadilla/config.json), so it (and its default) survive a restart.
 
+Backends whose runtime is downloaded at runtime (currently `llama-binary`) also
+have a **Manage** button on their row. It opens the Backend Manager window.
+
+### Backend Manager
+A drill-in window, one per backend (opening it again focuses the existing
+window). It lists the backend's installed versions and the versions available to
+install, plus an **Install Latest** button that resolves and installs the newest
+release for the host OS/architecture. Installed versions have a **Remove**
+button; available versions have an **Install** button (or **Reinstall** when
+that version is already installed). Versions are downloaded and set up exactly
+like the CLI's `backend install` command, through the backend's own installer, so
+the files and runtime links they need are created as part of the install.
+
 ## Model Search Page
 Find models to install from several sources. The scanners are listed on the left;
 selecting one runs its search and lists the results in a table on the right.
