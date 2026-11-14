@@ -32,5 +32,5 @@ WORKDIR /home/ubuntu
 
 # Install Opencode
 RUN \
-    curl -fsSL https://raw.githubusercontent.com/opencode-ai/opencode/refs/heads/main/install | bash
+    curl -fsSL https://opencode.ai/v2/install | bash
 

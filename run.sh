@@ -13,18 +13,57 @@ cd "$(dirname "$0")"
 # submodule (and llama.cpp nested inside it) has to be checked out even for a
 # pure-Go build that never links it.
 #
+# third_party/llama-go/go.mod proves the outer submodule is checked out;
+# llama.cpp/CMakeLists.txt proves the nested one is too.
+submodules_checked_out() {
+  [ -f "third_party/llama-go/go.mod" ] && [ -f "third_party/llama-go/llama.cpp/CMakeLists.txt" ]
+}
+
 # This is the smart version of "git submodule update --init --recursive": it
 # only touches git when something is actually missing, so it is cheap to call
 # from the build, the test run and the dependencies command alike.
 ensure_submodules() {
-  # third_party/llama-go/go.mod proves the outer submodule is checked out;
-  # llama.cpp/CMakeLists.txt proves the nested one is too.
-  if [ -f "third_party/llama-go/go.mod" ] && [ -f "third_party/llama-go/llama.cpp/CMakeLists.txt" ]; then
+  if submodules_checked_out; then
     return 0
   fi
 
   echo "Initialising submodules (third_party/llama-go and llama.cpp)..."
-  git submodule update --init --recursive
+  local output
+  if output="$(git submodule update --init --recursive 2>&1)"; then
+    # A previous failed checkout can leave a submodule's HEAD at the right
+    # commit but its index and work tree empty; update treats that as "already
+    # there", so force a clean checkout when the files are still missing.
+    if submodules_checked_out; then
+      return 0
+    fi
+    echo "Submodule working trees are incomplete; forcing a clean checkout..." >&2
+    git submodule update --init --recursive --force
+  else
+    # git refuses to check out a submodule whose recorded commit is not on its
+    # remote (for example a commit that was squashed or rebased before it was
+    # pushed). Rather than fail every build on a stale pin, warn and fall back
+    # to the top-level submodules' remote branches. The second command then
+    # checks out the pins recorded inside them (llama.cpp) normally, so the
+    # fallback only replaces the level whose pin is actually missing.
+    case "${output}" in
+      *"did not contain"*|*"not our ref"*|*"reference is not a tree"*)
+        echo "Warning: a submodule is pinned to a commit that is not on its remote." >&2
+        echo "${output}" >&2
+        echo "Falling back to the submodule's remote branch..." >&2
+        git submodule update --init --remote --force
+        git submodule foreach --quiet 'git submodule update --init --recursive --force'
+        ;;
+      *)
+        echo "${output}" >&2
+        return 1
+        ;;
+    esac
+  fi
+
+  if ! submodules_checked_out; then
+    echo "Error: submodules are still incomplete after updating them." >&2
+    return 1
+  fi
 }
 
 # Build the CLI for the current host into .build/cli/.

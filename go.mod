@@ -1,6 +1,6 @@
 module github.com/kncept/quesadilla
 
-go 1.27.2
+go 1.27.3
 
 require (
 	fyne.io/fyne/v2 v2.8.1
@@ -8,7 +8,7 @@ require (
 	github.com/magomedcoder/gogguf v0.0.0
 	github.com/owulveryck/onnx-go v0.5.0
 	github.com/postfinance/single v0.0.2
-	github.com/tcpipuk/llama-go v0.0.0-20261009125821-3b6c89e75117
+	github.com/tcpipuk/llama-go v0.0.0-20261031165508-a5d119b00e7d
 	gorgonia.org/tensor v0.9.3
 )
 
@@ -52,9 +52,9 @@ require (
 	github.com/xtgo/set v1.0.0 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
 	golang.org/x/image v0.24.0 // indirect
-	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/net v0.61.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	gonum.org/v1/gonum v0.0.0-20190902003836-43865b531bee // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorgonia.org/cu v0.9.0-beta // indirect
