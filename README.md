@@ -14,13 +14,15 @@ Then run it:
 
 ```sh
 open .build/macos/Quesadilla.app      # the macOS GUI (on a macOS host)
+.build/linux/quesadilla-gui_linux_amd64  # the Linux GUI (on a Linux host)
 # and/or
 .build/cli/quesadilla-cli_darwin_arm64 backend list   # the CLI
 ```
 
 That's all there is to it — nothing else to install. `./run.sh build` builds
-the CLI for the host OS/ARCH into `.build/cli/`, and (on a macOS host) the
-macOS GUI as `.build/macos/Quesadilla.app`.
+the CLI for the host OS/ARCH into `.build/cli/`, plus the GUI for the host:
+`.build/macos/Quesadilla.app` on macOS or
+`.build/linux/quesadilla-gui_linux_<arch>` on Linux.
 
 ## Why?
 
@@ -71,4 +73,5 @@ When the patches land upstream, drop the `replace` and require
 
 Use `go run cmd/cli/main.go` to run the CLI client.
 Use `go run cmd/macos/main.go` to run the MacOS client.
+Use `go run cmd/linux/main.go` to run the Linux client.
 Use `./run.sh test` to run the tests.

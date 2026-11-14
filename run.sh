@@ -194,6 +194,37 @@ EOF
   echo "macOS GUI build complete: ${app_dir} (open it with 'open ${app_dir}')"
 }
 
+# Build the Linux GUI into .build/linux/. Like the macOS GUI it is a cgo build
+# (fyne/glfw + OpenGL/X11 or Wayland), so it needs the native Fyne dependencies
+# and llama.cpp's static libraries, and can only be built on a Linux host.
+build_linux() {
+  if [ "$(uname -s)" != "Linux" ]; then
+    echo "Skipping Linux GUI build (requires a Linux host)"
+    return 0
+  fi
+
+  # The GUI is a cgo build, so it embeds the cgo embedded-llama backend and
+  # needs llama.cpp's static libraries.
+  (build_llama)
+
+  local host_arch
+  host_arch="$(current_goarch)"
+  if [ "${host_arch}" = "unknown" ]; then
+    echo "Error: unsupported host arch: $(uname -m)" >&2
+    return 1
+  fi
+
+  local out_dir=".build/linux"
+  local out_name="quesadilla-gui_linux_${host_arch}"
+
+  echo "Building ${out_name}..."
+  mkdir -p "${out_dir}"
+  CGO_ENABLED=1 GOOS=linux GOARCH="${host_arch}" \
+    go build -o "${out_dir}/${out_name}" ./cmd/linux
+
+  echo "Linux GUI build complete: ${out_dir}/${out_name}"
+}
+
 # Map the current host to a Go GOOS.
 current_goos() {
   case "$(uname -s)" in
@@ -301,6 +332,7 @@ build() {
 
   build_cli
   build_macos
+  build_linux
 }
 
 test() {
@@ -435,9 +467,10 @@ Commands:
   dependencies:macos   Install the native build dependencies for macOS (Xcode command line tools)
   dependencies:linux   Install the native build dependencies for Linux (gcc + OpenGL/X11/xkbcommon/Wayland headers)
   dependencies:windows Install the native build dependencies for Windows (MinGW-w64 gcc)
-  build                Build every target (host CLI, macOS .app)
+  build                Build every target (host CLI, GUI for the host OS)
   build:cli            Build the CLI for the current host into .build/cli/
   build:macos          Build the macOS GUI into .build/macos/Quesadilla.app (requires macOS)
+  build:linux          Build the Linux GUI into .build/linux/ (requires Linux)
   build:llama          Build llama.cpp's static libraries for the embedded-llama backend
   test                 Run go tests (go test ./...)
   clean                Remove generated files (.build/) and .DS_Store files
@@ -454,6 +487,9 @@ case "${1:-}" in
     ;;
   build:macos)
     (build_macos)
+    ;;
+  build:linux)
+    (build_linux)
     ;;
   build:llama)
     (build_llama)

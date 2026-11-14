@@ -4,7 +4,13 @@ ARG GO_VERSION=1.27.3
 
 RUN apt-get update
 RUN apt-get -y upgrade
-RUN apt-get -y install sudo wget curl vim git unzip bash
+
+# The Fyne dependencies mirror ./run.sh dependencies_linux; build-essential
+# (which includes make and gcc) and cmake are also needed to build llama.cpp.
+RUN apt-get -y install \
+    sudo wget curl vim git unzip bash \
+    build-essential cmake \
+    gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev libwayland-dev
 
 # Install Go
 # split this up, something isnt' quite working !?!?
