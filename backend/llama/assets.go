@@ -130,7 +130,7 @@ func installLlamaAssets(version string, nameToDownloadUrl map[string]string) err
 			return err
 		}
 
-		if runtime.GOOS == "darwin" {
+		if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 			for _, dirEntry := range dirEntries {
 				name := dirEntry.Name()
 				if shouldSymlinkFile(name) {
@@ -148,10 +148,12 @@ func installLlamaAssets(version string, nameToDownloadUrl map[string]string) err
 	return nil
 }
 
-// shouldSymlinkFile reports whether the extracted dylib needs a symlink
+// shouldSymlinkFile reports whether the extracted library needs a symlink
 // alongside it so llama-server can locate it.
+// On macOS: creates libllama.0.dylib -> libllama.0.0.0.dylib
+// On Linux: creates libllama.so.0 -> libllama.so.0.0.0
 func shouldSymlinkFile(filename string) bool {
-	return strings.HasSuffix(filename, ".dylib")
+	return strings.HasSuffix(filename, ".dylib") || strings.Contains(filename, ".so.")
 }
 
 // newFileName strips the full version from a dylib name, keeping only the

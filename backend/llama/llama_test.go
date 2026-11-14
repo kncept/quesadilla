@@ -24,6 +24,7 @@ func TestRenameFiles(t *testing.T) {
 
 func llamaFileThatNeedSymlinking() []string {
 	return []string{
+		// macOS dylib files
 		"libggml-base.0.25.3.dylib",
 		"libggml-blas.0.25.3.dylib",
 		"libggml-cpu.0.25.3.dylib",
@@ -33,5 +34,13 @@ func llamaFileThatNeedSymlinking() []string {
 		"libllama-common.0.5.0.dylib",
 		"libllama.0.5.0.dylib",
 		"libmtmd.0.5.0.dylib",
+		// Linux so files
+		"libggml-base.so.0.25.3",
+		"libggml-blas.so.0.25.3",
+		"libggml-cpu.so.0.25.3",
+		"libggml.so.0.25.3",
+		"libllama-common.so.0.5.0",
+		"libllama.so.0.5.0",
+		"libmtmd.so.0.5.0",
 	}
 }

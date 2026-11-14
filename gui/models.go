@@ -254,6 +254,42 @@ func (this *QGUI) startModel(m *definitions.Model) {
 	this.QApp.Start(backend, m)
 }
 
+// runModelWithLogs starts the currently selected model in the Model Details
+// screen and opens the logs viewer for it. If the model is already running,
+// it just opens the logs viewer (matching the behavior of the Logs button on
+// the Models page).
+func (this *QGUI) runModelWithLogs() {
+	if this.modelDetailsSelected == "" {
+		this.notifyError("No model selected")
+		return
+	}
+	model := this.QApp.LocalModels.GetModel(this.modelDetailsSelected)
+	if model == nil {
+		this.notifyError(fmt.Sprintf("Model not found: %s", this.modelDetailsSelected))
+		return
+	}
+
+	// Check if the model is already running
+	running := this.runningModelFor(model.FullModelName())
+	if running != nil {
+		// Model is already running: just show its logs
+		this.showLogs(running)
+		return
+	}
+
+	// Model is not running: start it and then show logs
+	this.startModel(model)
+
+	// The model should now be running (QApp.Start waits for it to start).
+	// Get the running model from the registry and show its logs.
+	running = this.runningModelFor(model.FullModelName())
+	if running == nil {
+		this.notifyError(fmt.Sprintf("Failed to start model: %s", model.FullModelName()))
+		return
+	}
+	this.showLogs(running)
+}
+
 // stopModel asks the named running model to quit, if it is running.
 func (this *QGUI) stopModel(modelName string) {
 	fmt.Printf("stopModel %s\n", modelName)
@@ -436,6 +472,12 @@ func (this *QGUI) modelDetailsPage() fyne.CanvasObject {
 	})
 	this.modelDetailsRefreshButton.Disable() // disabled until a model is selected
 
+	// Run with Logs button - starts the model and opens the logs viewer
+	this.modelDetailsRunWithLogsButton = widget.NewButtonWithIcon("Run with Logs", theme.MediaPlayIcon(), func() {
+		this.runModelWithLogs()
+	})
+	this.modelDetailsRunWithLogsButton.Disable() // disabled until a model is selected
+
 	this.modelDetailsList = widget.NewList(
 		func() int {
 			return len(this.modelDetailsRows)
@@ -481,7 +523,7 @@ func (this *QGUI) modelDetailsPage() fyne.CanvasObject {
 		container.NewVBox(
 			this.modelDetailsSelect,
 			widget.NewSeparator(),
-			container.NewHBox(this.modelDetailsRefreshButton),
+			container.NewHBox(this.modelDetailsRefreshButton, this.modelDetailsRunWithLogsButton),
 			widget.NewSeparator(),
 		),
 		nil, nil, nil,
@@ -540,12 +582,19 @@ func (this *QGUI) showModelDetailsContent(modelName string) {
 		if this.modelDetailsRefreshButton != nil {
 			this.modelDetailsRefreshButton.Disable()
 		}
+		if this.modelDetailsRunWithLogsButton != nil {
+			this.modelDetailsRunWithLogsButton.Disable()
+		}
 		return
 	}
 
 	// Enable the refresh metadata button when a model is selected
 	if this.modelDetailsRefreshButton != nil {
 		this.modelDetailsRefreshButton.Enable()
+	}
+	// Enable the run with logs button when a model is selected
+	if this.modelDetailsRunWithLogsButton != nil {
+		this.modelDetailsRunWithLogsButton.Enable()
 	}
 
 	// Sort variants so the active variant and the default (first) variant
@@ -661,6 +710,9 @@ func (this *QGUI) showModelDetailsMessage(message string) {
 	this.showModelDetailsView(this.modelDetailsModelScroll)
 	if this.modelDetailsRefreshButton != nil {
 		this.modelDetailsRefreshButton.Disable()
+	}
+	if this.modelDetailsRunWithLogsButton != nil {
+		this.modelDetailsRunWithLogsButton.Disable()
 	}
 }
 
